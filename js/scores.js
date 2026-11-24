@@ -76,6 +76,12 @@
     return { title: (m ? base.slice(0, m.index) : base).trim() || base, key: m ? m[1].replace(/\s+/g, '') : '' };
   };
   function today() { return U.ymd(new Date()); }
+  // 카톡으로 받은 파일·스캔·사진 이름은 곡 제목이 아님
+  function genericName(t) {
+    t = String(t || '');
+    var digits = (t.match(/\d/g) || []).length;
+    return /talkfile|kakaotalk|카카오톡|scan|camscanner|^img|^image|^photo|^dsc|screenshot|스크린샷|document|문서|콘티|악보|setlist|^\d+$/i.test(t.replace(/\s+/g, '')) || digits > t.length * 0.4;
+  }
   function dateLabel(d) {
     var x = U.toDate(d); if (!x) return '';
     if (x.getDay() === 0) return U.weekLabel(d);
@@ -456,7 +462,7 @@
       (async function () {
         for (var f = 0; f < files.length; f++) {
           var file = files[f], nm = Scores.parseName(file.name);
-          fileInfo[f] = { file: file, name: file.name, title: nm.title, key: nm.key, pdf: isPdf(file), pages: 0, text: false };
+          fileInfo[f] = { file: file, name: file.name, title: genericName(nm.title) ? '' : nm.title, key: nm.key, pdf: isPdf(file), pages: 0, text: false };
           setLoading((f + 1) + '/' + files.length + ' · ' + file.name);
           try {
             if (isPdf(file)) {
@@ -492,7 +498,7 @@
         pages.forEach(function (p, i) {
           var first = !fileStarts[p.f]; fileStarts[p.f] = true;
           var fi = fileInfo[p.f]; p.start = false;
-          if (how === 'page') { startAt(p, p.det.title || (fi.pages > 1 ? fi.title + ' ' + p.n : fi.title), p.det.key || fi.key); return; }
+          if (how === 'page') { startAt(p, p.det.title || (fi.pages > 1 ? '' : fi.title), p.det.key || (fi.pages > 1 ? '' : fi.key)); return; }
           if (first) startAt(p, fi.title, fi.key);
         });
         if (how !== 'auto') return;
@@ -538,8 +544,9 @@
               '<button class="chip-btn" data-how="auto">자동 (제목 인식)</button>' +
               '<button class="chip-btn" data-how="page">한 쪽 = 한 곡</button>' +
               '<button class="chip-btn" data-how="file">파일 하나 = 한 곡</button></div>' +
-            '<p class="sp-hint">' + SVG.scissors + ' 페이지 사이의 가위를 누르면 거기서 새 곡으로 나뉘고, <b>앞 곡에 붙이기</b>로 다시 합칠 수 있어요. 필요 없는 쪽(표지·빈 쪽)은 <b>빼기</b>를 누르세요.' +
-              (noText.length ? '<br><b>' + esc(noText.join(', ')) + '</b>은(는) 스캔한 PDF라 곡 제목을 자동으로 찾지 못했어요. 여러 곡이 들어 있다면 가위 버튼으로 나눠 주세요.' : '') + '</p>' +
+            '<p class="sp-hint">' + SVG.scissors + ' ' + (noText.length ?
+                '<b>사진으로 된 PDF라 곡을 자동으로 나누지 못했어요.</b> 새 곡이 시작되는 쪽에서 <b>여기서 나누기</b>를 누르고, 악보를 눌러 크게 보면서 제목을 적어 주세요.' :
+                '새 곡이 시작되는 쪽에서 <b>여기서 나누기</b>, 표지·빈 쪽은 <b>빼기</b>. 악보를 누르면 크게 보여요.') + '</p>' +
             gs.map(function (g, k) {
               var h = g.head, done = h.done;
               return '<section class="sp-group' + (done ? ' done' : '') + '" data-g="' + k + '">' +
@@ -550,13 +557,16 @@
                   '<input class="sp-artist" data-a="' + g.idx[0] + '" value="' + esc(h.gArtist || '') + '" placeholder="아티스트 (선택)" aria-label="아티스트">') +
                   '<span class="muted small nw">' + g.use.length + '쪽</span>' +
                   (k > 0 && !done && !gs[k - 1].head.done ? '<button class="btn btn-sm btn-ghost" data-merge="' + g.idx[0] + '">' + SVG.merge + '앞 곡에 붙이기</button>' : '') + '</div>' +
-                (g.use.length ? '<button type="button" class="sp-peek" data-view="' + g.use[0] + '" style="background-image:url(' + pages[g.use[0]].thumb + ')" aria-label="첫 쪽 제목 부분 크게 보기"><span>' + SVG.zoom + '눌러서 크게 보기</span></button>' : '') +
                 '<div class="sp-pages">' + g.idx.map(function (i, j) {
                   var p = pages[i], fi = fileInfo[p.f];
-                  return (j > 0 && !done ? '<button class="sp-cut" data-cut="' + i + '" title="여기서 새 곡으로 나누기" aria-label="' + (j + 1) + '번째 쪽부터 새 곡">' + SVG.scissors + '</button>' : '') +
-                    '<figure class="sp-page' + (p.off ? ' off' : '') + '"><button type="button" class="sp-zoom" data-view="' + i + '" aria-label="크게 보기"><img src="' + p.thumb + '" alt=""><span class="sp-mag">' + SVG.zoom + '</span></button>' +
-                    '<figcaption>' + esc(fi.pages > 1 ? fi.name.replace(/\.pdf$/i, '') + ' ' + p.n + '쪽' : fi.name) + '</figcaption>' +
-                    (done ? '' : '<button class="sp-off" data-off="' + i + '">' + (p.off ? '다시 넣기' : '빼기') + '</button>') + '</figure>';
+                  return '<figure class="sp-page' + (p.off ? ' off' : '') + (j === 0 ? ' first' : '') + '">' +
+                    '<button type="button" class="sp-zoom" data-view="' + i + '" aria-label="' + p.n + '쪽 크게 보기"><img src="' + p.thumb + '" alt="">' +
+                      '<span class="sp-pno">' + (fi.pages > 1 || files.length > 1 ? p.n + '쪽' : '사진') + '</span><span class="sp-mag">' + SVG.zoom + '</span></button>' +
+                    (files.length > 1 ? '<figcaption>' + esc(fi.name) + '</figcaption>' : '') +
+                    (done ? '' : '<div class="sp-ptools">' +
+                      (j > 0 ? '<button type="button" class="sp-cut" data-cut="' + i + '" title="이 쪽부터 새 곡으로 나누기">' + SVG.scissors + '여기서 나누기</button>' : '<span class="sp-startlbl">' + (k + 1) + '번 곡 시작</span>') +
+                      '<button type="button" class="sp-off" data-off="' + i + '">' + (p.off ? '다시 넣기' : '빼기') + '</button></div>') +
+                    '</figure>';
                 }).join('') + '</div></section>';
             }).join('') +
           '</div>' +
