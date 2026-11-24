@@ -342,7 +342,6 @@
           '<div class="pv-zoomrow"><span>글씨 크기</span><button type="button" class="icon-btn" data-zoom="-1" aria-label="작게">−</button><b id="pv-zl">100%</b><button type="button" class="icon-btn" data-zoom="1" aria-label="크게">+</button></div>' +
         '</div>' +
         '<div class="pv-pages" id="pv-pages"><div class="loading"><span class="spinner"></span></div></div>' +
-        '<div class="pv-tap pv-tap-l" data-tap="-1"></div><div class="pv-tap pv-tap-r" data-tap="1"></div>' +
         (row.youtube_url ? '<div class="pv-yt" id="pv-yt" hidden></div>' : '') +
         (seq.length > 1 ? '<footer class="pv-nav">' +
           '<button class="pv-btn" data-song="-1"' + (idx <= 0 ? ' disabled' : '') + '>' + icon('chevron-left') + '<span>' + (idx > 0 ? esc(seq[idx - 1].score.title) : '이전 곡') + '</span></button>' +
@@ -418,10 +417,22 @@
     var pop = U.$('#pv-pop', ctx.el), optBtn = U.$('[data-opts]', ctx.el);
     function popOpen(open) { pop.hidden = !open; optBtn.classList.toggle('on', open); optBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
     optBtn.onclick = function (e) { e.stopPropagation(); popOpen(pop.hidden); };
-    function onDocDown(e) { if (!pop.hidden && !pop.contains(e.target) && !optBtn.contains(e.target)) popOpen(false); }
+    function onDocDown(e) {
+      if (!pop.hidden && !pop.contains(e.target) && !optBtn.contains(e.target)) {
+        popOpen(false);
+        if (pagesEl.contains(e.target)) { swallowTap = true; setTimeout(function () { swallowTap = false; }, 600); }   // 설정 창 닫는 탭으로 쪽이 넘어가지 않게
+      }
+    }
     document.addEventListener('pointerdown', onDocDown, true);
     U.$$('[data-song]', ctx.el).forEach(function (b) { b.onclick = function () { song(+b.dataset.song); }; });
-    U.$$('[data-tap]', ctx.el).forEach(function (b) { b.onclick = function () { if (mode === 'page' && zoom === 1) go(+b.dataset.tap); }; });
+    // 한 장씩 모드: 악보 왼쪽/오른쪽을 탭하면 이전/다음 쪽 (머리글·아래 버튼과 겹치지 않게 악보 영역 안에서만)
+    var swallowTap = false;
+    pagesEl.addEventListener('click', function (e) {
+      if (swallowTap) { swallowTap = false; return; }
+      if (mode !== 'page' || zoom !== 1) return;
+      var r = pagesEl.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+      if (x < 0.3) go(-1); else if (x > 0.7) go(1);
+    });
     var wb = U.$('[data-wake]', ctx.el);
     async function wakeOn(quiet) {
       if (wake || destroyed) return;

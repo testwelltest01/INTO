@@ -765,9 +765,6 @@ body.viewer-mode #toasts { bottom: 80px; }
 .pv-page canvas { display: block; }
 .pv-pnum { position: absolute; right: 6px; bottom: 6px; background: rgba(0, 0, 0, .55); color: #fff; font-size: .7rem; padding: 1px 7px; border-radius: 99px; }
 .pv.mode-page .pv-pages { justify-content: center; padding: 4px; }
-.pv-tap { position: absolute; top: 60px; bottom: 60px; width: 28%; z-index: 2; display: none; }
-.pv.mode-page .pv-tap { display: block; }
-.pv-tap-l { left: 0; } .pv-tap-r { right: 0; }
 .pv-nav { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px calc(8px + var(--safe-b)); background: #2b2622; }
 .pv-nav .pv-btn { max-width: 40%; }
 .pv-nav .pv-btn span { overflow: hidden; text-overflow: ellipsis; }
