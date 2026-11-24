@@ -1198,3 +1198,26 @@ button.mix-chip-b { cursor: pointer; }
   .mix-g ul { padding: 6px 10px 10px; } .mix-g-h { padding: 8px 10px 4px; }
 }
 .mix-ov-btn { background: #fff; color: var(--ink); border-color: #fff; font-weight: 700; }
+/* 조장·서기 */
+.mix-preview-sub { font-size: .8rem; color: var(--muted); }
+.mix-g li { justify-content: space-between; }
+.mix-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mix-role { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: .72rem; font-weight: 700; padding: 2px 8px 2px 6px; border-radius: 99px; }
+.mix-role .ic { width: 13px; height: 13px; }
+.mix-role.leader { background: #FFF1D6; color: #A86B10; }
+.mix-role.leader .star { color: #E6A23C; }
+.mix-role.scribe { background: #E4EEFB; color: #2F5E9A; }
+.mix-myrole { display: flex; width: fit-content; align-items: center; gap: 6px; margin: 12px auto 0; padding: 7px 16px; border-radius: 99px; background: #fff; color: var(--ink); font-size: 1rem; box-shadow: 0 4px 14px rgba(0, 0, 0, .15); animation: mixPop .5s cubic-bezier(.2, 1.6, .4, 1); }
+.mix-myrole .ic { width: 20px; height: 20px; }
+.mix-myrole.leader .star { color: #E6A23C; }
+.mix-myrole.scribe .pen { color: #2F5E9A; }
+.mix-mycard-with b { font-weight: 800; }
+.mix-ov-role { min-height: 0; }
+.mix-ov-role.on { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 10px 20px; border-radius: 99px; background: #fff; color: var(--ink); font-size: 1.25rem; animation: mixRole .8s .25s cubic-bezier(.2, 1.8, .4, 1) both; }
+.mix-ov-role.on .ic { width: 28px; height: 28px; }
+.mix-ov-role.leader .star { color: #E6A23C; }
+.mix-ov-role.scribe .pen { color: #2F5E9A; }
+@keyframes mixRole { 0% { opacity: 0; transform: scale(.3) rotate(-8deg); } 100% { opacity: 1; transform: none; } }
+.mix-ov-with b { font-weight: 800; }
+.mix.present .mix-role { font-size: 1rem; padding: 3px 12px 3px 8px; }
+.mix.present .mix-role .ic { width: 18px; height: 18px; }

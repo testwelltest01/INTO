@@ -12,6 +12,7 @@
   var FRUITS = [['사랑', '#E0605E'], ['희락', '#EE9B2F'], ['화평', '#4AA172'], ['오래참음', '#4A84C6'], ['자비', '#8E6FCB'],
                 ['양선', '#DA77A8'], ['충성', '#2C9895'], ['온유', '#B4864A'], ['절제', '#66788A']];
   var DICE = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.3" fill="currentColor"/></svg>';
+  var PEN = '<svg class="ic pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.5 4.5l4 4L9 19l-5 1 1-5z"/><path d="M13.5 6.5l4 4"/></svg>';
   var STAR = '<svg class="ic star" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z"/></svg>';
 
   function gName(i) { return (i + 1) + '조'; }
@@ -36,7 +37,38 @@
     shuffle(members.filter(function (m) { return !m.is_leader; })).forEach(function (m) {
       pick(function (g) { return g.ids.length; }).ids.push(m.id);
     });
+    gs.forEach(pickRoles);
     return gs;
+  }
+  // 조마다 조장 1명 + 서기 1명 (⭐조장 후보가 있는 조는 그중에서 조장)
+  function pickRoles(g) {
+    var cand = (g.leaders || []).filter(function (id) { return g.ids.map(sid).indexOf(sid(id)) >= 0; });
+    g.leader = cand.length ? cand[rnd(cand.length)] : (g.ids.length ? g.ids[rnd(g.ids.length)] : null);
+    var rest = g.ids.filter(function (id) { return sid(id) !== sid(g.leader); });
+    g.scribe = rest.length ? rest[rnd(rest.length)] : null;
+  }
+  function rerollRoles(groups, members) {
+    var lead = {}; members.forEach(function (m) { if (m.is_leader) lead[sid(m.id)] = 1; });
+    var have = {}; members.forEach(function (m) { have[sid(m.id)] = 1; });
+    groups = JSON.parse(JSON.stringify(groups || []));
+    groups.forEach(function (g) {
+      g.ids = g.ids.filter(function (id) { return have[sid(id)]; });   // 빠진 사람은 정리
+      g.leaders = g.ids.filter(function (id) { return lead[sid(id)]; });
+      pickRoles(g);
+    });
+    return groups;
+  }
+  function roleOf(g, id) {
+    if (!g || id == null) return '';
+    var leader = g.leader != null ? g.leader : (g.leaders || [])[0];
+    if (leader != null && sid(leader) === sid(id)) return 'leader';
+    if (g.scribe != null && sid(g.scribe) === sid(id)) return 'scribe';
+    return '';
+  }
+  function roleTag(r) { return r === 'leader' ? '<span class="mix-role leader">' + STAR + '조장</span>' : r === 'scribe' ? '<span class="mix-role scribe">' + PEN + '서기</span>' : ''; }
+  function orderIds(g) {   // 조장 → 서기 → 나머지
+    var w = function (id) { var r = roleOf(g, id); return r === 'leader' ? 0 : r === 'scribe' ? 1 : 2; };
+    return g.ids.slice().sort(function (a, b) { return w(a) - w(b); });
   }
   function assignedIds(groups) { var s = {}; (groups || []).forEach(function (g) { g.ids.forEach(function (id) { s[sid(id)] = 1; }); }); return s; }
   function addLate(groups, late) {
@@ -45,6 +77,10 @@
       var min = Math.min.apply(null, groups.map(function (g) { return g.ids.length; }));
       var ties = groups.filter(function (g) { return g.ids.length === min; });
       ties[rnd(ties.length)].ids.push(m.id);
+    });
+    groups.forEach(function (g) {
+      if (g.leader == null && g.ids.length) g.leader = (g.leaders || [])[0] != null ? g.leaders[0] : g.ids[rnd(g.ids.length)];
+      if (g.scribe == null) { var rest = g.ids.filter(function (id) { return sid(id) !== sid(g.leader); }); if (rest.length) g.scribe = rest[rnd(rest.length)]; }
     });
     return groups;
   }
@@ -213,7 +249,7 @@
             '<div class="mix-grid">' +
               '<div class="panel mix-people"><div class="panel-head"><h2>참가한 사람 <b class="mix-n" id="mix-n">0</b>명</h2></div><div class="panel-body">' +
                 '<div class="mix-chips" id="mix-chips"></div>' +
-                '<p class="mix-tip">이름을 누르면 ' + STAR + '<b>조장</b>이 돼요 (조마다 한 명씩 먼저 나눠요). 현장에 없는 사람은 <b>✕</b>로 빼 주세요.</p>' +
+                '<p class="mix-tip">조마다 ' + STAR + '<b>조장 1명</b>과 ' + PEN + '<b>서기 1명</b>을 뽑아요. 조장을 미리 정하고 싶으면 이름을 눌러 ' + STAR + '<b>조장 후보</b>로 지정하세요 (후보가 없는 조는 랜덤). 현장에 없는 사람은 <b>✕</b>로 빼 주세요.</p>' +
                 '<form class="mix-add" id="mix-add"><input placeholder="휴대폰 없는 분 이름 추가" maxlength="20" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done"><button class="btn btn-sm">' + icon('plus') + '추가</button></form>' +
                 (App.api.mode === 'demo' ? '<button class="btn btn-sm btn-ghost mix-demo" data-demo-fill>가상 참가자 8명 넣기 (데모)</button>' : '') +
               '</div></div>' +
@@ -365,7 +401,8 @@
       U.$$('[data-by]', ctx.el).forEach(function (b) { b.classList.toggle('on', b.dataset.by === by); });
       U.$('#mix-num', ctx.el).textContent = num;
       U.$('#mix-unit', ctx.el).textContent = by === 'size' ? '명씩' : '조';
-      U.$('#mix-preview', ctx.el).innerHTML = n ? '<b>' + n + '명</b> → <b>' + gc + '조</b> (' + sizesText(n, gc) + ')' + (st.members.some(function (m) { return m.is_leader; }) ? ' · 조장 ' + st.members.filter(function (m) { return m.is_leader; }).length + '명' : '') : '참가자를 기다리는 중…';
+      var cands = st.members.filter(function (m) { return m.is_leader; }).length;
+      U.$('#mix-preview', ctx.el).innerHTML = n ? '<b>' + n + '명</b> → <b>' + gc + '조</b> (' + sizesText(n, gc) + ')<br><span class="mix-preview-sub">조마다 조장 1명 · 서기 1명' + (cands ? ' · 조장 후보 ' + cands + '명' : '') + '</span>' : '참가자를 기다리는 중…';
       var go = U.$('[data-go] span', ctx.el); if (go) go.textContent = (st.room.groups || []).length ? '다시 섞기' : '조 나누기!';
       var mj = U.$('[data-me-join]', ctx.el); if (mj) mj.innerHTML = st.meId ? icon('check') + '나도 참가 중' : icon('plus') + '나도 참가';
     }
@@ -374,10 +411,16 @@
       var box = U.$('#mix-after', ctx.el), r = st.room; if (!box) return;
       var as = assignedIds(r.groups), late = (r.groups || []).length ? st.members.filter(function (m) { return !as[sid(m.id)]; }) : [];
       box.innerHTML = (late.length ? '<button class="btn btn-sm" data-late>' + icon('plus') + '늦게 온 ' + late.length + '명 조에 넣기</button>' : '') +
+        ((r.groups || []).length && r.status !== 'closed' ? '<button class="btn btn-sm btn-ghost" data-reroll>' + STAR + '조장·서기만 다시 뽑기</button>' : '') +
         (r.status !== 'closed' ? '<button class="btn btn-sm btn-ghost" data-close-room>' + icon('check') + '조 나누기 끝내기</button>' : '<span class="chip">끝난 조 나누기</span>');
       var lb = U.$('[data-late]', box);
       if (lb) lb.onclick = async function () {
         try { await App.api.mix.update(r.id, { groups: addLate(r.groups, late) }); refresh(); U.toast(late.length + '명을 인원이 적은 조에 넣었어요.'); } catch (e) { U.toast(U.errMsg(e), 'error'); }
+      };
+      var rb = U.$('[data-reroll]', box);
+      if (rb) rb.onclick = async function () {
+        if (!(await U.confirm('조는 그대로 두고 조장·서기만 다시 뽑을까요?', '다시 뽑기'))) return;
+        try { await App.api.mix.update(r.id, { groups: rerollRoles(r.groups, st.members), round: (r.round || 0) + 1 }); refresh(); } catch (e) { U.toast(U.errMsg(e), 'error'); }
       };
       var cb = U.$('[data-close-room]', box);
       if (cb) cb.onclick = async function () {
@@ -397,10 +440,11 @@
         return;
       }
       if (my) {
-        var names = my.ids.filter(function (id) { return sid(id) !== sid(st.meId); }).map(nameOf).filter(Boolean);
+        var myRole = roleOf(my, st.meId);
         box.innerHTML = '<div class="mix-mycard" style="--c:' + my.color + '"><span class="mix-mycard-k">' + esc(me ? me.name : '') + ' 님은</span>' +
           '<b class="mix-mycard-g">' + esc(my.name) + '</b>' + (my.fruit ? '<span class="mix-mycard-f">' + esc(my.fruit) + '</span>' : '') +
-          (names.length ? '<p class="mix-mycard-with">함께할 사람 · ' + names.map(esc).join(', ') + '</p>' : '') +
+          (myRole ? '<div class="mix-myrole ' + myRole + '">' + (myRole === 'leader' ? STAR + '<span>이번 조 <b>조장</b>이에요</span>' : PEN + '<span>이번 조 <b>서기</b>예요</span>') + '</div>' : '') +
+          '<p class="mix-mycard-with">' + rolesLine(my) + '</p>' +
           '<button class="btn btn-sm mix-replay" data-replay>' + DICE + '다시 보기</button></div>';
         U.$('[data-replay]', box).onclick = function () { reveal(my); };
         return;
@@ -410,6 +454,15 @@
         '<p class="mix-dots"><span></span><span></span><span></span></p></div>';
     }
 
+    function rolesLine(g) {   // "조장 김은혜 · 서기 박소망 · 함께 이믿음, 최기쁨"
+      var others = orderIds(g).filter(function (id) { return !roleOf(g, id) && sid(id) !== sid(st.meId); }).map(nameOf).filter(Boolean);
+      var leader = g.ids.filter(function (id) { return roleOf(g, id) === 'leader'; })[0], scribe = g.ids.filter(function (id) { return roleOf(g, id) === 'scribe'; })[0];
+      var parts = [];
+      if (leader != null && nameOf(leader)) parts.push('조장 <b>' + esc(nameOf(leader)) + (sid(leader) === sid(st.meId) ? ' (나)' : '') + '</b>');
+      if (scribe != null && nameOf(scribe)) parts.push('서기 <b>' + esc(nameOf(scribe)) + (sid(scribe) === sid(st.meId) ? ' (나)' : '') + '</b>');
+      if (others.length) parts.push('함께 ' + others.map(esc).join(', '));
+      return parts.join(' · ');
+    }
     function nameOf(id) { var m = st.members.filter(function (x) { return sid(x.id) === sid(id); })[0]; return m ? m.name : ''; }
 
     function drawResult(initial) {
@@ -421,10 +474,10 @@
       box.innerHTML = '<h2 class="mix-h">조 나눔 결과</h2><div class="mix-groups">' + r.groups.map(function (g) {
         var mineG = g.ids.map(sid).indexOf(sid(st.meId)) >= 0;
         return '<div class="mix-g' + (mineG ? ' mine' : '') + '" style="--c:' + g.color + '"><div class="mix-g-h"><b>' + esc(g.name) + '</b>' + (g.fruit ? '<span>' + esc(g.fruit) + '</span>' : '') + '<small>' + g.ids.filter(nameOf).length + '명</small></div>' +
-          '<ul>' + g.ids.map(function (id) {
+          '<ul>' + orderIds(g).map(function (id) {
             var nm = nameOf(id); if (!nm) return '';
-            var lead = (g.leaders || []).map(sid).indexOf(sid(id)) >= 0, d = animate ? ' style="animation-delay:' + (k++ * 70) + 'ms"' : '';
-            return '<li class="' + (animate ? 'fly' : '') + (sid(id) === sid(st.meId) ? ' is-me' : '') + '"' + d + '>' + (lead ? STAR : '') + esc(nm) + (sid(id) === sid(st.meId) ? ' (나)' : '') + '</li>';
+            var d = animate ? ' style="animation-delay:' + (k++ * 70) + 'ms"' : '';
+            return '<li class="' + (animate ? 'fly' : '') + (sid(id) === sid(st.meId) ? ' is-me' : '') + '"' + d + '><span class="mix-nm">' + esc(nm) + (sid(id) === sid(st.meId) ? ' (나)' : '') + '</span>' + roleTag(roleOf(g, id)) + '</li>';
           }).join('') + '</ul></div>';
       }).join('') + '</div>';
       if (animate) confetti(U.$('.mix-groups', box));
@@ -437,7 +490,7 @@
       var ov = document.createElement('div'); ov.className = 'mix-ov'; ov.id = 'mix-ov';
       ov.innerHTML = '<div class="mix-ov-in"><p class="mix-ov-k">' + esc(meName) + ' 님의 조는…</p>' +
         '<div class="mix-slot"><div class="mix-slot-card"><b></b><span></span></div></div>' +
-        '<p class="mix-ov-with"></p><button class="btn mix-ov-btn" data-ov-close>확인</button></div>';
+        '<div class="mix-ov-role"></div><p class="mix-ov-with"></p><button class="btn mix-ov-btn" data-ov-close>확인</button></div>';
       document.body.appendChild(ov);
       var card = U.$('.mix-slot-card', ov), b = U.$('b', card), s = U.$('span', card);
       function show(g) { card.style.setProperty('--c', g.color); b.textContent = g.name; s.textContent = g.fruit || ''; }
@@ -446,8 +499,9 @@
         if (!document.body.contains(ov)) return;
         if (total > 2300 && delay > 260) {
           show(my); ov.classList.add('landed');
-          var names = my.ids.filter(function (id) { return sid(id) !== sid(st.meId); }).map(nameOf).filter(Boolean);
-          U.$('.mix-ov-with', ov).textContent = names.length ? '함께할 사람 · ' + names.join(', ') : '';
+          var myRole = roleOf(my, st.meId), rb = U.$('.mix-ov-role', ov);
+          if (myRole) { rb.className = 'mix-ov-role on ' + myRole; rb.innerHTML = myRole === 'leader' ? STAR + '<span><b>조장</b>으로 뽑혔어요!</span>' : PEN + '<span><b>서기</b>로 뽑혔어요!</span>'; }
+          U.$('.mix-ov-with', ov).innerHTML = rolesLine(my);
           try { if (navigator.vibrate) navigator.vibrate([60, 40, 120]); } catch (e) { }
           confetti(ov);
           return;
