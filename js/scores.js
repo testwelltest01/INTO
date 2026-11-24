@@ -17,6 +17,7 @@
     grip: '<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
     up: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>',
     down: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+    zoom: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg>',
     merge: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>'
   };
 
@@ -440,11 +441,13 @@
         if (closed) return; closed = true;
         docs.forEach(function (d) { try { d.destroy(); } catch (e) { } });
         urls.forEach(function (u) { URL.revokeObjectURL(u); });
+        var v = U.$('.spv'); if (v) v.remove();
         wrap.remove(); document.body.classList.remove('no-scroll');
         document.removeEventListener('keydown', onKey);
         resolve(saved);
       }
-      function onKey(e) { if (e.key === 'Escape' && !busy) ask(); }
+      var viewing = false;
+      function onKey(e) { if (e.key === 'Escape' && !busy && !viewing) ask(); }
       document.addEventListener('keydown', onKey);
       var busy = false;
       async function ask() { if (saved.length || await U.confirm('나누기를 그만할까요? 아직 저장하지 않았어요.', '그만하기')) close(); }
@@ -461,12 +464,12 @@
               fileInfo[f].pages = doc.numPages;
               for (var n = 1; n <= doc.numPages; n++) {
                 var pg = await doc.getPage(n), v1 = pg.getViewport({ scale: 1 });
-                var tv = pg.getViewport({ scale: 220 / v1.width }), cv = document.createElement('canvas');
+                var tv = pg.getViewport({ scale: 600 / v1.width }), cv = document.createElement('canvas');
                 cv.width = Math.round(tv.width); cv.height = Math.round(tv.height);
                 await pg.render({ canvasContext: cv.getContext('2d'), viewport: tv }).promise;
                 var det = null; try { det = detectTitle(await pg.getTextContent(), v1.width, v1.height); } catch (e) { }
                 if (det) fileInfo[f].text = true;
-                pages.push({ f: f, n: n, doc: doc, thumb: cv.toDataURL('image/jpeg', 0.75), det: det || { title: '', key: '', isTitle: false }, off: false, start: false });
+                pages.push({ f: f, n: n, doc: doc, thumb: cv.toDataURL('image/jpeg', 0.8), det: det || { title: '', key: '', isTitle: false }, off: false, start: false });
                 if (n % 4 === 0) setLoading((f + 1) + '/' + files.length + ' · ' + file.name + ' (' + n + '/' + doc.numPages + '쪽)');
               }
             } else if (isImg(file)) {
@@ -522,6 +525,7 @@
 
       // 3) 화면
       function draw() {
+        var oldBody = U.$('.sp-body', wrap), keepTop = oldBody ? oldBody.scrollTop : 0;
         var gs = groups(), songs = gs.filter(function (g) { return g.use.length && !g.head.done; });
         var noText = fileInfo.filter(function (fi) { return fi.pdf && fi.pages > 1 && !fi.text; }).map(function (fi) { return fi.name; });
         var setOpts = (opts.setlists || []).filter(function (s) { return s.worship_date >= today(); });
@@ -546,10 +550,11 @@
                   '<input class="sp-artist" data-a="' + g.idx[0] + '" value="' + esc(h.gArtist || '') + '" placeholder="아티스트 (선택)" aria-label="아티스트">') +
                   '<span class="muted small nw">' + g.use.length + '쪽</span>' +
                   (k > 0 && !done && !gs[k - 1].head.done ? '<button class="btn btn-sm btn-ghost" data-merge="' + g.idx[0] + '">' + SVG.merge + '앞 곡에 붙이기</button>' : '') + '</div>' +
+                (g.use.length ? '<button type="button" class="sp-peek" data-view="' + g.use[0] + '" style="background-image:url(' + pages[g.use[0]].thumb + ')" aria-label="첫 쪽 제목 부분 크게 보기"><span>' + SVG.zoom + '눌러서 크게 보기</span></button>' : '') +
                 '<div class="sp-pages">' + g.idx.map(function (i, j) {
                   var p = pages[i], fi = fileInfo[p.f];
                   return (j > 0 && !done ? '<button class="sp-cut" data-cut="' + i + '" title="여기서 새 곡으로 나누기" aria-label="' + (j + 1) + '번째 쪽부터 새 곡">' + SVG.scissors + '</button>' : '') +
-                    '<figure class="sp-page' + (p.off ? ' off' : '') + '"><img src="' + p.thumb + '" alt="">' +
+                    '<figure class="sp-page' + (p.off ? ' off' : '') + '"><button type="button" class="sp-zoom" data-view="' + i + '" aria-label="크게 보기"><img src="' + p.thumb + '" alt=""><span class="sp-mag">' + SVG.zoom + '</span></button>' +
                     '<figcaption>' + esc(fi.pages > 1 ? fi.name.replace(/\.pdf$/i, '') + ' ' + p.n + '쪽' : fi.name) + '</figcaption>' +
                     (done ? '' : '<button class="sp-off" data-off="' + i + '">' + (p.off ? '다시 넣기' : '빼기') + '</button>') + '</figure>';
                 }).join('') + '</div></section>';
@@ -561,6 +566,7 @@
             '<div class="sp-prog muted small" id="sp-prog"></div>' +
             '<button class="btn btn-primary" data-save>' + songs.length + '곡 저장</button></footer>';
         bind();
+        var nb = U.$('.sp-body', wrap); if (nb && keepTop) nb.scrollTop = keepTop;
       }
       function bind() {
         U.$('[data-x]', wrap).onclick = function () { if (!busy) ask(); };
@@ -574,6 +580,110 @@
         U.$$('[data-k]', wrap).forEach(function (inp) { inp.oninput = function () { pages[+inp.dataset.k].gKey = inp.value.trim(); }; });
         U.$$('[data-a]', wrap).forEach(function (inp) { inp.oninput = function () { pages[+inp.dataset.a].gArtist = inp.value; }; });
         U.$$('[data-save]', wrap).forEach(function (b) { b.onclick = save; });
+        U.$$('[data-view]', wrap).forEach(function (b) { b.onclick = function () { view(+b.dataset.view); }; });
+      }
+
+      // 3-1) 크게 보기: 페이지를 화면 크기에 맞게 선명하게 다시 그려서 보여 주고, 거기서 바로 제목·나누기
+      async function bigUrl(p) {
+        if (p.img) return p.thumb;
+        if (p.big) return p.big;
+        var pg = await p.doc.getPage(p.n), v1 = pg.getViewport({ scale: 1 });
+        var W = Math.min(2400, Math.max(1600, Math.round(Math.min(window.innerWidth, 1100) * Math.min(window.devicePixelRatio || 1, 2.5))));
+        var sc = W / v1.width; if (v1.width * sc * v1.height * sc > 12e6) sc = Math.sqrt(12e6 / (v1.width * v1.height));
+        var vp = pg.getViewport({ scale: sc }), cv = document.createElement('canvas');
+        cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+        await pg.render({ canvasContext: cx, viewport: vp }).promise;
+        var blob = await new Promise(function (r) { cv.toBlob(r, 'image/jpeg', 0.9); }); cv.width = cv.height = 0;
+        if (!blob) return p.thumb;
+        p.big = URL.createObjectURL(blob); urls.push(p.big); return p.big;
+      }
+      function view(start) {
+        var cur = start, zoom = 1, ZS = [1, 1.5, 2, 3], token = 0;
+        viewing = true;
+        var v = document.createElement('div'); v.className = 'spv'; v.setAttribute('role', 'dialog'); v.setAttribute('aria-label', '악보 크게 보기');
+        v.innerHTML =
+          '<header class="spv-bar"><button class="icon-btn" data-vx aria-label="닫기">' + icon('close') + '</button>' +
+            '<div class="spv-t"><b></b><small></small></div>' +
+            '<button class="icon-btn" data-vz="-1" aria-label="축소"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>' +
+            '<button class="icon-btn" data-vz="1" aria-label="확대"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button></header>' +
+          '<div class="spv-body"><img class="spv-img" alt=""><span class="spinner spv-spin"></span></div>' +
+          '<button class="spv-nav l" data-vn="-1" aria-label="이전 쪽">' + icon('chevron-left') + '</button>' +
+          '<button class="spv-nav r" data-vn="1" aria-label="다음 쪽">' + icon('chevron-right') + '</button>' +
+          '<footer class="spv-foot"></footer>';
+        document.body.appendChild(v);
+        var body = U.$('.spv-body', v), img = U.$('.spv-img', v), foot = U.$('.spv-foot', v);
+        function where() {
+          var gs = groups();
+          for (var k = 0; k < gs.length; k++) { var j = gs[k].idx.indexOf(cur); if (j >= 0) return { gs: gs, g: gs[k], k: k, j: j }; }
+        }
+        function setZoom(z) { zoom = z; img.style.width = (zoom * 100) + '%'; v.classList.toggle('zoomed', zoom > 1); }
+        async function paint(resetScroll) {
+          var p = pages[cur], fi = fileInfo[p.f], w = where(), h = w.g.head, done = h.done, my = ++token;
+          U.$('.spv-t b', v).textContent = (w.k + 1) + '번째 곡 · ' + (h.gTitle || '제목 없음');
+          U.$('.spv-t small', v).textContent = (fi.pages > 1 ? fi.name.replace(/\.pdf$/i, '') + ' ' + p.n + '쪽' : fi.name) + ' · ' + (cur + 1) + '/' + pages.length + (p.off ? ' · 뺀 쪽' : '');
+          U.$('[data-vn="-1"]', v).disabled = cur <= 0; U.$('[data-vn="1"]', v).disabled = cur >= pages.length - 1;
+          v.classList.toggle('off', !!p.off);
+          foot.innerHTML = done ? '<p class="spv-done">' + icon('check') + '이미 저장한 곡이에요.</p>' :
+            '<div class="spv-fields"><span class="sr-no">' + (w.k + 1) + '</span>' +
+              '<input class="spv-title" data-vt value="' + esc(h.gTitle) + '" placeholder="곡 제목 (악보에 적힌 제목을 보고 적어 주세요)" aria-label="곡 제목">' +
+              '<input class="spv-key" data-vk value="' + esc(h.gKey) + '" placeholder="키" aria-label="키"></div>' +
+            '<div class="spv-acts">' +
+              (w.j > 0 ? '<button class="btn btn-sm" data-va="cut">' + SVG.scissors + '이 쪽부터 새 곡</button>' :
+                (w.k > 0 && !w.gs[w.k - 1].head.done ? '<button class="btn btn-sm" data-va="merge">' + SVG.merge + '앞 곡에 붙이기</button>' : '')) +
+              '<button class="btn btn-sm btn-ghost" data-va="off">' + (p.off ? '다시 넣기' : '이 쪽 빼기') + '</button>' +
+              '<span class="spv-pos muted small">이 곡의 ' + (w.j + 1) + '/' + w.g.idx.length + '쪽</span></div>';
+          var t = U.$('[data-vt]', foot), kk = U.$('[data-vk]', foot);
+          if (t) t.oninput = function () { h.gTitle = t.value; U.$('.spv-t b', v).textContent = (w.k + 1) + '번째 곡 · ' + (t.value || '제목 없음'); };
+          if (kk) kk.oninput = function () { h.gKey = kk.value.trim(); };
+          U.$$('[data-va]', foot).forEach(function (b) {
+            b.onclick = function () {
+              var a = b.dataset.va;
+              if (a === 'cut') { startAt(p, p.det.isTitle ? p.det.title : '', p.det.key); paint(); var ti = U.$('[data-vt]', foot); if (ti && !ti.value) ti.focus(); }
+              else if (a === 'merge') { h.start = false; paint(); }
+              else if (a === 'off') { p.off = !p.off; paint(); }
+            };
+          });
+          if (resetScroll) body.scrollTop = 0;
+          v.classList.add('loading');
+          var url = p.thumb;
+          img.src = url;   // 먼저 미리보기를 띄우고
+          try { url = await bigUrl(p); } catch (e) { }
+          if (my !== token) return;
+          img.src = url;   // 선명한 그림으로 바꿈
+          v.classList.remove('loading');
+          if (pages[cur + 1] && !pages[cur + 1].img) bigUrl(pages[cur + 1]).catch(function () { });
+        }
+        function go(d) { var n = cur + d; if (n < 0 || n >= pages.length) return; cur = n; setZoom(1); paint(true); }
+        function closeView() {
+          viewing = false; document.removeEventListener('keydown', keys, true); v.remove(); draw();
+          var f = U.$('[data-view="' + cur + '"].sp-zoom', wrap); if (f) f.scrollIntoView({ block: 'nearest' });
+        }
+        function keys(e) {
+          if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) { if (e.key === 'Escape') { e.target.blur(); e.stopPropagation(); } return; }
+          if (e.key === 'Escape') { e.stopPropagation(); closeView(); }
+          else if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); go(1); }
+          else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(-1); }
+        }
+        document.addEventListener('keydown', keys, true);
+        U.$('[data-vx]', v).onclick = closeView;
+        U.$$('[data-vn]', v).forEach(function (b) { b.onclick = function () { go(+b.dataset.vn); }; });
+        U.$$('[data-vz]', v).forEach(function (b) {
+          b.onclick = function () { var i = ZS.indexOf(zoom) + (+b.dataset.vz); setZoom(ZS[Math.max(0, Math.min(ZS.length - 1, i))]); };
+        });
+        img.ondblclick = function (e) {
+          var r = body.getBoundingClientRect(), fx = (e.clientX - r.left + body.scrollLeft) / body.scrollWidth, fy = (e.clientY - r.top + body.scrollTop) / body.scrollHeight;
+          setZoom(zoom > 1 ? 1 : 2);
+          body.scrollLeft = fx * body.scrollWidth - r.width / 2; body.scrollTop = fy * body.scrollHeight - r.height / 2;
+        };
+        var sx = null, sy = null;
+        body.addEventListener('touchstart', function (e) { if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; } }, { passive: true });
+        body.addEventListener('touchend', function (e) {
+          if (sx === null || zoom > 1) return;
+          var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy; sx = null;
+          if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx < 0 ? 1 : -1);
+        });
+        setZoom(1); paint(true);
       }
 
       // 4) 저장: 파일 하나를 통째로 쓰는 곡은 PDF 원본 그대로(가장 선명), 나눈 곡은 페이지 이미지로
