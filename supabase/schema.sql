@@ -622,6 +622,11 @@ select x.worship_date, jsonb_agg(jsonb_build_object('score_id', x.id) order by x
  group by x.worship_date;
 
 -- =====================================================================
+-- 곡마다 유튜브 링크 (005)
+-- =====================================================================
+alter table public.scores add column if not exists youtube_url text;
+
+-- =====================================================================
 -- 첫 관리자 지정 (앱에서 회원가입한 뒤 아래 한 줄을 이메일만 바꿔 실행)
 --   update public.profiles set role = 'admin', status = 'active' where email = 'admin@into.or.kr';
 -- =====================================================================

@@ -50,7 +50,7 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
       'sermon_title', 'preacher', 'scripture_text', 'questions', 'application', 'prayer', 'attachment_url', 'attachment_name', 'publish_at'],
     inquiries: ['name', 'phone', 'email', 'kind', 'preferred_date', 'message'],
     photos: ['url', 'thumb_url', 'caption', 'tag', 'sort'],
-    scores: ['title', 'artist', 'song_key', 'memo', 'worship_date', 'sort_order', 'file_path', 'file_name', 'file_size', 'page_count', 'pages'],
+    scores: ['title', 'artist', 'song_key', 'memo', 'worship_date', 'sort_order', 'file_path', 'file_name', 'file_size', 'page_count', 'pages', 'youtube_url'],
     setlists: ['worship_date', 'title', 'memo', 'items']
   };
 

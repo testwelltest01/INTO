@@ -18,6 +18,7 @@
     up: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>',
     down: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
     zoom: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg>',
+    yt: '<svg class="ic yt-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="4.5" width="21" height="15" rx="4.5" fill="currentColor"/><path d="M10 8.8v6.4l5.6-3.2z" fill="#fff"/></svg>',
     merge: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>'
   };
 
@@ -76,6 +77,67 @@
     return { title: (m ? base.slice(0, m.index) : base).trim() || base, key: m ? m[1].replace(/\s+/g, '') : '' };
   };
   function today() { return U.ymd(new Date()); }
+  // iOS 키보드가 올라오면 고정 화면이 위로 밀려 머리글이 사라지므로, 보이는 영역에 맞춰 줌
+  function fitKeyboard(el) {
+    var vv = window.visualViewport; if (!vv) return function () { };
+    function f() {
+      var kb = window.innerHeight - vv.height > 120;
+      el.style.height = kb ? Math.round(vv.height) + 'px' : '';
+      el.style.top = kb ? Math.round(vv.offsetTop) + 'px' : '';
+      el.style.bottom = kb ? 'auto' : '';
+      el.classList.toggle('kb-open', kb);
+    }
+    vv.addEventListener('resize', f); vv.addEventListener('scroll', f); f();
+    return function () { vv.removeEventListener('resize', f); vv.removeEventListener('scroll', f); };
+  }
+  var NOAUTO = ' autocomplete="off" autocorrect="off" spellcheck="false"';
+  /* ---------- 유튜브 ---------- */
+  function ytId(u) {
+    var m = String(u || '').match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/|v\/))([\w-]{11})/i);
+    return m ? m[1] : '';
+  }
+  function ytStart(u) {
+    var m = String(u || '').match(/[?&#](?:t|start)=([0-9hms]+)/i); if (!m) return 0;
+    if (/^\d+$/.test(m[1])) return +m[1];
+    var h = /(\d+)h/.exec(m[1]), mi = /(\d+)m/.exec(m[1]), se = /(\d+)s/.exec(m[1]);
+    return (h ? +h[1] * 3600 : 0) + (mi ? +mi[1] * 60 : 0) + (se ? +se[1] : 0);
+  }
+  function normUrl(u) {
+    u = String(u || '').trim(); if (!u) return '';
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u.replace(/^\/+/, '');
+    return u;
+  }
+  Scores.ytId = ytId;
+  function ytLink(s, cls) {
+    return s && s.youtube_url ? '<a class="' + (cls || 'yt-mini') + '" href="' + esc(s.youtube_url) + '" target="_blank" rel="noopener" title="유튜브로 듣기" aria-label="' + esc(s.title) + ' 유튜브로 듣기">' + SVG.yt + '</a>' : '';
+  }
+  // 곡의 유튜브 링크 넣기·바꾸기 (관리자) — 곡 자체에 저장되어 모든 콘티에 적용
+  function editYoutube(s, onSaved) {
+    U.modal({
+      title: '유튜브 링크 — ' + s.title,
+      html: '<form class="form" id="yt-f"><label class="field"><span>유튜브 영상 주소</span><input name="u" inputmode="url" autocomplete="off" value="' + esc(s.youtube_url || '') + '" placeholder="https://youtu.be/…  (공유 버튼 → 링크 복사)"></label>' +
+        '<div class="yt-prev" id="yt-prev"></div>' +
+        '<p class="muted small">찬양팀이 악보를 보면서 바로 들을 수 있어요. 시작 시간이 들어간 링크(…?t=45)도 돼요.</p>' +
+        '<div class="modal-actions">' + (s.youtube_url ? '<button type="button" class="btn btn-ghost danger-text" data-clear>링크 지우기</button><span style="flex:1"></span>' : '') +
+        '<button type="button" class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary">저장</button></div></form>',
+      onMount: function (root, close) {
+        var f = root.querySelector('#yt-f'), inp = f.querySelector('[name=u]'), prev = root.querySelector('#yt-prev');
+        function show() {
+          var id = ytId(inp.value);
+          prev.innerHTML = id ? '<img src="https://i.ytimg.com/vi/' + id + '/mqdefault.jpg" alt="" loading="lazy"><span>' + SVG.yt + '유튜브 영상이 맞는지 확인해 주세요</span>' :
+            (inp.value.trim() ? '<span class="muted small">유튜브 주소가 아니면 링크로만 열려요.</span>' : '');
+        }
+        inp.oninput = show; show();
+        async function put(v) {
+          try { var r = await App.api.scores.save({ id: s.id, youtube_url: v || null }); Object.assign(s, r, { youtube_url: v || null }); close(); U.toast(v ? '유튜브 링크를 저장했어요.' : '링크를 지웠어요.'); onSaved && onSaved(s); }
+          catch (e) { U.toast(U.errMsg(e), 'error'); }
+        }
+        var clr = root.querySelector('[data-clear]'); if (clr) clr.onclick = function () { put(''); };
+        f.onsubmit = function (e) { e.preventDefault(); var v = normUrl(inp.value); if (v && !/^https?:\/\/[^\s.]+\.[^\s]+$/i.test(v)) { U.toast('주소를 다시 확인해 주세요.', 'error'); return; } put(v); };
+        setTimeout(function () { if (window.innerWidth > 700) inp.focus(); }, 50);
+      }
+    });
+  }
   // 카톡으로 받은 파일·스캔·사진 이름은 곡 제목이 아님
   function genericName(t) {
     t = String(t || '');
@@ -139,11 +201,11 @@
 
     function row(e, href, no) {
       var s = e.score, k = keyOf(e);
-      return '<a class="list-row score-row" href="' + href + '"><span class="sr-no">' + no + '</span>' +
+      return '<div class="score-line"><a class="list-row score-row" href="' + href + '"><span class="sr-no">' + no + '</span>' +
         '<span class="lr-body"><span class="lr-title">' + esc(s.title) + '</span><span class="lr-sub">' +
         [s.artist, (s.page_count || filesOf(s).length) ? (s.page_count || filesOf(s).length) + '쪽' : '', e.item && e.item.memo].filter(Boolean).map(esc).join(' · ') + '</span></span>' +
         (k ? '<span class="key-chip">' + esc(k) + '</span>' : '') +
-        (cached[s.id] ? '<span class="saved-dot" title="이 기기에 저장됨">' + icon('check') + '</span>' : '') + '</a>';
+        (cached[s.id] ? '<span class="saved-dot" title="이 기기에 저장됨">' + icon('check') + '</span>' : '') + '</a>' + ytLink(s) + '</div>';
     }
     function drawSets() {
       var past = sets.filter(function (s) { return s.worship_date < t; });
@@ -262,12 +324,14 @@
           '<div class="pv-tools">' +
             '<button class="icon-btn" data-zoom="-1" aria-label="축소"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>' +
             '<button class="icon-btn" data-zoom="1" aria-label="확대"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>' +
+            (row.youtube_url ? '<button class="pv-btn pv-ytb" data-yt aria-pressed="false">' + SVG.yt + '<span>유튜브</span></button>' : '') +
             '<button class="pv-btn" data-mode></button>' +
             ('wakeLock' in navigator ? '<button class="pv-btn" data-wake aria-pressed="false">' + icon('eye') + '<span>화면 켜 두기</span></button>' : '') +
           '</div>' +
         '</header>' +
         '<div class="pv-pages" id="pv-pages"><div class="loading"><span class="spinner"></span></div></div>' +
         '<div class="pv-tap pv-tap-l" data-tap="-1"></div><div class="pv-tap pv-tap-r" data-tap="1"></div>' +
+        (row.youtube_url ? '<div class="pv-yt" id="pv-yt" hidden></div>' : '') +
         (seq.length > 1 ? '<footer class="pv-nav">' +
           '<button class="pv-btn" data-song="-1"' + (idx <= 0 ? ' disabled' : '') + '>' + icon('chevron-left') + '<span>' + (idx > 0 ? esc(seq[idx - 1].score.title) : '이전 곡') + '</span></button>' +
           '<span class="pv-count">' + (idx + 1) + ' / ' + seq.length + '곡</span>' +
@@ -377,8 +441,28 @@
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
 
+    // 유튜브: 악보를 보면서 아래(PC는 오른쪽 아래)에서 재생
+    var ytBtn = U.$('[data-yt]', ctx.el), ytBox = U.$('#pv-yt', ctx.el);
+    function ytToggle(open) {
+      if (!ytBox) return;
+      var id = ytId(row.youtube_url);
+      if (!id) { window.open(row.youtube_url, '_blank', 'noopener'); return; }
+      if (open === undefined) open = ytBox.hidden;
+      if (open) {
+        var st = ytStart(row.youtube_url);
+        ytBox.innerHTML = '<div class="pv-yt-frame"><iframe src="https://www.youtube-nocookie.com/embed/' + id + '?playsinline=1&rel=0&modestbranding=1&autoplay=1' + (st ? '&start=' + st : '') + '" title="' + esc(row.title) + ' 유튜브" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>' +
+          '<div class="pv-yt-bar"><a href="' + esc(row.youtube_url) + '" target="_blank" rel="noopener">' + icon('external') + '유튜브 앱에서 열기</a><button class="pv-btn" data-yt-x>' + icon('close') + '<span>닫기</span></button></div>';
+        U.$('[data-yt-x]', ytBox).onclick = function () { ytToggle(false); };
+      } else ytBox.innerHTML = '';
+      ytBox.hidden = !open;
+      ytBtn.classList.toggle('on', open); ytBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+      if (mode === 'page' && window.innerWidth < 900) onResize();
+    }
+    if (ytBtn) ytBtn.onclick = function () { ytToggle(); };
+
     function cleanup() {
       destroyed = true;
+      if (ytBox) ytBox.innerHTML = '';
       document.body.classList.remove('viewer-mode');
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('visibilitychange', onVis);
@@ -442,13 +526,14 @@
       var wrap = document.createElement('div'); wrap.className = 'sp-wrap';
       wrap.innerHTML = '<div class="sp-loading"><span class="spinner"></span><p>페이지를 읽는 중이에요…</p></div>';
       document.body.appendChild(wrap); document.body.classList.add('no-scroll');
+      var unfit = fitKeyboard(wrap);
       var closed = false;
       function close() {
         if (closed) return; closed = true;
         docs.forEach(function (d) { try { d.destroy(); } catch (e) { } });
         urls.forEach(function (u) { URL.revokeObjectURL(u); });
         var v = U.$('.spv'); if (v) v.remove();
-        wrap.remove(); document.body.classList.remove('no-scroll');
+        unfit(); wrap.remove(); document.body.classList.remove('no-scroll');
         document.removeEventListener('keydown', onKey);
         resolve(saved);
       }
@@ -552,9 +637,10 @@
               return '<section class="sp-group' + (done ? ' done' : '') + '" data-g="' + k + '">' +
                 '<div class="sp-ghead"><span class="sr-no">' + (k + 1) + '</span>' +
                   (done ? '<b class="sp-done">' + icon('check') + esc(h.gTitle) + ' · 저장됨</b>' :
-                  '<input class="sp-title" data-t="' + g.idx[0] + '" value="' + esc(h.gTitle) + '" placeholder="곡 제목" aria-label="곡 제목">' +
-                  '<input class="sp-key" data-k="' + g.idx[0] + '" value="' + esc(h.gKey) + '" placeholder="키" aria-label="키">' +
-                  '<input class="sp-artist" data-a="' + g.idx[0] + '" value="' + esc(h.gArtist || '') + '" placeholder="아티스트 (선택)" aria-label="아티스트">') +
+                  '<input class="sp-title" data-t="' + g.idx[0] + '" value="' + esc(h.gTitle) + '" placeholder="곡 제목" aria-label="곡 제목" enterkeyhint="next"' + NOAUTO + '>' +
+                  '<input class="sp-key" data-k="' + g.idx[0] + '" value="' + esc(h.gKey) + '" placeholder="키" aria-label="키" autocapitalize="characters" enterkeyhint="done"' + NOAUTO + '>' +
+                  '<input class="sp-artist" data-a="' + g.idx[0] + '" value="' + esc(h.gArtist || '') + '" placeholder="아티스트 (선택)" aria-label="아티스트"' + NOAUTO + '>' +
+                  '<input class="sp-yt" data-y="' + g.idx[0] + '" value="' + esc(h.gYt || '') + '" inputmode="url" autocomplete="off" placeholder="유튜브 링크 (선택)" aria-label="유튜브 링크">') +
                   '<span class="muted small nw">' + g.use.length + '쪽</span>' +
                   (k > 0 && !done && !gs[k - 1].head.done ? '<button class="btn btn-sm btn-ghost" data-merge="' + g.idx[0] + '">' + SVG.merge + '앞 곡에 붙이기</button>' : '') + '</div>' +
                 '<div class="sp-pages">' + g.idx.map(function (i, j) {
@@ -587,8 +673,10 @@
         U.$$('[data-merge]', wrap).forEach(function (b) { b.onclick = function () { pages[+b.dataset.merge].start = false; draw(); }; });
         U.$$('[data-off]', wrap).forEach(function (b) { b.onclick = function () { var p = pages[+b.dataset.off]; p.off = !p.off; draw(); }; });
         U.$$('[data-t]', wrap).forEach(function (inp) { inp.oninput = function () { pages[+inp.dataset.t].gTitle = inp.value; inp.classList.remove('bad'); }; });
-        U.$$('[data-k]', wrap).forEach(function (inp) { inp.oninput = function () { pages[+inp.dataset.k].gKey = inp.value.trim(); }; });
+        U.$$('[data-k]', wrap).forEach(function (inp) { inp.oninput = function () { pages[+inp.dataset.k].gKey = inp.value.trim(); }; inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } }; });
+        U.$$('[data-t]', wrap).forEach(function (inp) { inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); var k = U.$('[data-k="' + inp.dataset.t + '"]', wrap); if (k) k.focus(); } }; });
         U.$$('[data-a]', wrap).forEach(function (inp) { inp.oninput = function () { pages[+inp.dataset.a].gArtist = inp.value; }; });
+        U.$$('[data-y]', wrap).forEach(function (inp) { inp.oninput = function () { pages[+inp.dataset.y].gYt = inp.value; }; });
         U.$$('[data-save]', wrap).forEach(function (b) { b.onclick = save; });
         U.$$('[data-view]', wrap).forEach(function (b) { b.onclick = function () { view(+b.dataset.view); }; });
       }
@@ -617,11 +705,12 @@
             '<div class="spv-t"><b></b><small></small></div>' +
             '<button class="icon-btn" data-vz="-1" aria-label="축소"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>' +
             '<button class="icon-btn" data-vz="1" aria-label="확대"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button></header>' +
-          '<div class="spv-body"><img class="spv-img" alt=""><span class="spinner spv-spin"></span></div>' +
+          '<div class="spv-stage"><div class="spv-body"><img class="spv-img" alt=""><span class="spinner spv-spin"></span></div>' +
           '<button class="spv-nav l" data-vn="-1" aria-label="이전 쪽">' + icon('chevron-left') + '</button>' +
-          '<button class="spv-nav r" data-vn="1" aria-label="다음 쪽">' + icon('chevron-right') + '</button>' +
+          '<button class="spv-nav r" data-vn="1" aria-label="다음 쪽">' + icon('chevron-right') + '</button></div>' +
           '<footer class="spv-foot"></footer>';
         document.body.appendChild(v);
+        var unfitV = fitKeyboard(v);
         var body = U.$('.spv-body', v), img = U.$('.spv-img', v), foot = U.$('.spv-foot', v);
         function where() {
           var gs = groups();
@@ -636,8 +725,8 @@
           v.classList.toggle('off', !!p.off);
           foot.innerHTML = done ? '<p class="spv-done">' + icon('check') + '이미 저장한 곡이에요.</p>' :
             '<div class="spv-fields"><span class="sr-no">' + (w.k + 1) + '</span>' +
-              '<input class="spv-title" data-vt value="' + esc(h.gTitle) + '" placeholder="곡 제목 (악보에 적힌 제목을 보고 적어 주세요)" aria-label="곡 제목">' +
-              '<input class="spv-key" data-vk value="' + esc(h.gKey) + '" placeholder="키" aria-label="키"></div>' +
+              '<input class="spv-title" data-vt value="' + esc(h.gTitle) + '" placeholder="곡 제목 (악보 보고 적기)" aria-label="곡 제목" enterkeyhint="next"' + NOAUTO + '>' +
+              '<input class="spv-key" data-vk value="' + esc(h.gKey) + '" placeholder="키" aria-label="키" autocapitalize="characters" enterkeyhint="done"' + NOAUTO + '></div>' +
             '<div class="spv-acts">' +
               (w.j > 0 ? '<button class="btn btn-sm" data-va="cut">' + SVG.scissors + '이 쪽부터 새 곡</button>' :
                 (w.k > 0 && !w.gs[w.k - 1].head.done ? '<button class="btn btn-sm" data-va="merge">' + SVG.merge + '앞 곡에 붙이기</button>' : '')) +
@@ -646,6 +735,8 @@
           var t = U.$('[data-vt]', foot), kk = U.$('[data-vk]', foot);
           if (t) t.oninput = function () { h.gTitle = t.value; U.$('.spv-t b', v).textContent = (w.k + 1) + '번째 곡 · ' + (t.value || '제목 없음'); };
           if (kk) kk.oninput = function () { h.gKey = kk.value.trim(); };
+          if (t) t.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); if (kk) kk.focus(); } };
+          if (kk) kk.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); kk.blur(); } };
           U.$$('[data-va]', foot).forEach(function (b) {
             b.onclick = function () {
               var a = b.dataset.va;
@@ -666,7 +757,7 @@
         }
         function go(d) { var n = cur + d; if (n < 0 || n >= pages.length) return; cur = n; setZoom(1); paint(true); }
         function closeView() {
-          viewing = false; document.removeEventListener('keydown', keys, true); v.remove(); draw();
+          viewing = false; document.removeEventListener('keydown', keys, true); unfitV(); v.remove(); draw();
           var f = U.$('[data-view="' + cur + '"].sp-zoom', wrap); if (f) f.scrollIntoView({ block: 'nearest' });
         }
         function keys(e) {
@@ -729,7 +820,7 @@
           for (var k = 0; k < gs.length; k++) {
             var g = gs[k], h = g.head, fi = fileInfo[h.f];
             var whole = fi.pdf && g.use.length === fi.pages && g.use.every(function (i) { return pages[i].f === h.f; });
-            var row = { title: h.gTitle.trim(), song_key: (h.gKey || '').trim(), artist: (h.gArtist || '').trim(), page_count: g.use.length, pages: [] };
+            var row = { title: h.gTitle.trim(), song_key: (h.gKey || '').trim(), artist: (h.gArtist || '').trim(), youtube_url: normUrl(h.gYt) || null, page_count: g.use.length, pages: [] };
             prog.textContent = (k + 1) + '/' + gs.length + '곡 · ' + row.title + ' 올리는 중…';
             if (whole) {
               var up = await App.api.scores.uploadFile(fi.file);
@@ -772,6 +863,7 @@
         '<div class="grid2"><label class="field"><span>원래 키 (Key)</span><input name="song_key" value="' + esc(s.song_key || '') + '" placeholder="예) G, A→B♭"></label>' +
         '<label class="field"><span>아티스트</span><input name="artist" value="' + esc(s.artist || '') + '"></label></div>' +
         '<label class="field"><span>메모</span><input name="memo" value="' + esc(s.memo || '') + '" placeholder="예) 카포 2, 템포 72"></label>' +
+        '<label class="field"><span>유튜브 링크</span><input name="youtube_url" inputmode="url" autocomplete="off" value="' + esc(s.youtube_url || '') + '" placeholder="https://youtu.be/…"></label>' +
         '<div class="row-between"><button type="button" class="btn btn-sm btn-ghost" data-replace>' + icon('refresh') + '파일 바꾸기 (PDF·사진)</button><span class="muted small">' +
           (s.pages && s.pages.length ? '이미지 ' + s.pages.length + '쪽' : 'PDF') + (s.file_name ? ' · ' + esc(s.file_name) : '') + '</span></div>' +
         '<div class="modal-actions"><button type="button" class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary">저장</button></div></form>',
@@ -800,7 +892,7 @@
         f.onsubmit = async function (e) {
           e.preventDefault(); var d = U.formData(f);
           try {
-            var saved = await App.api.scores.save({ id: s.id, title: d.title, song_key: d.song_key, artist: d.artist, memo: d.memo });
+            var saved = await App.api.scores.save({ id: s.id, title: d.title, song_key: d.song_key, artist: d.artist, memo: d.memo, youtube_url: normUrl(d.youtube_url) || null });
             Object.assign(s, saved); close(); onSaved && onSaved(s); U.toast('저장했어요.');
           } catch (err) { U.toast(U.errMsg(err), 'error'); }
         };
@@ -823,15 +915,18 @@
       return '<div class="toolbar"><div class="tb-left"><a class="btn btn-primary" href="#/admin/setlists/new">' + icon('plus') + '새 콘티 만들기</a></div></div>' +
         (sets.length ? sets.map(function (sl) {
           var es = entries(sl, map);
-          return '<section class="panel"><div class="panel-head"><h2>' + setTitleHTML(sl, nextId) + ' <span class="muted small">&nbsp;' + es.length + '곡</span></h2>' +
-            '<div class="row-tools">' + (es.length ? '<a class="btn btn-sm btn-ghost" href="#/scores/' + es[0].score.id + '?set=' + sl.id + '&i=' + es[0].i + '">' + icon('eye') + '보기</a>' : '') +
-            '<a class="btn btn-sm btn-ghost" href="#/admin/setlists/' + sl.id + '">' + icon('edit') + '순서·수정</a>' +
-            '<button class="btn btn-sm btn-ghost" data-copy="' + sl.id + '">복사</button>' +
-            '<button class="icon-btn danger-text" data-del-set="' + sl.id + '" aria-label="삭제">' + icon('trash') + '</button></div></div>' +
-            '<div class="panel-body">' + (es.length ? '<ol class="sl-mini">' + es.map(function (e) {
-              var k = keyOf(e); return '<li><b>' + esc(e.score.title) + '</b>' + (k ? ' <span class="key-chip sm">' + esc(k) + '</span>' : '') + (e.item.memo ? ' <span class="muted small">' + esc(e.item.memo) + '</span>' : '') + '</li>';
-            }).join('') + '</ol>' : '<p class="muted small">곡이 없어요. <a href="#/admin/setlists/' + sl.id + '">곡 추가하기</a></p>') +
-            (sl.memo ? '<p class="sl-memo">' + U.text(sl.memo) + '</p>' : '') + '</div></section>';
+          var t = today(), chip = sl.id === nextId ? '<span class="chip chip-dark">다음 예배</span>' : sl.worship_date < t ? '<span class="chip">지난 콘티</span>' : '<span class="chip">예정</span>';
+          return '<section class="slc' + (sl.id === nextId ? ' next' : '') + '">' +
+            '<a class="slc-head" href="#/admin/setlists/' + sl.id + '"><span class="slc-date">' + esc(dateLabel(sl.worship_date)) + '</span>' + chip +
+              '<span class="slc-n">' + es.length + '곡</span>' + (sl.title ? '<span class="slc-name">' + esc(sl.title) + '</span>' : '') + '</a>' +
+            (es.length ? '<ol class="sl-mini">' + es.map(function (e, n) {
+              var k = keyOf(e); return '<li><span class="slm-no">' + (n + 1) + '.</span><span class="slm-t">' + esc(e.score.title) + '</span>' + (k ? '<span class="key-chip sm">' + esc(k) + '</span>' : '') + (e.score.youtube_url ? ytLink(e.score, 'yt-inline') : '') + (e.item.memo ? '<span class="slm-memo">' + esc(e.item.memo) + '</span>' : '') + '</li>';
+            }).join('') + '</ol>' : '<p class="muted small slc-empty">곡이 없어요. <a href="#/admin/setlists/' + sl.id + '">곡 추가하기</a></p>') +
+            (sl.memo ? '<p class="sl-memo">' + U.text(sl.memo) + '</p>' : '') +
+            '<div class="slc-acts">' + (es.length ? '<a class="btn btn-sm btn-ghost" href="#/scores/' + es[0].score.id + '?set=' + sl.id + '&i=' + es[0].i + '">' + icon('eye') + '보기</a>' : '') +
+              '<a class="btn btn-sm btn-ghost" href="#/admin/setlists/' + sl.id + '">' + icon('edit') + '순서·수정</a>' +
+              '<button class="btn btn-sm btn-ghost" data-copy="' + sl.id + '">복사</button>' +
+              '<button class="icon-btn danger-text" data-del-set="' + sl.id + '" aria-label="콘티 삭제">' + icon('trash') + '</button></div></section>';
         }).join('') : '<div class="empty">아직 콘티가 없어요.<br><small>예배 날짜를 정하고 곡을 골라 순서를 정해 보세요.</small></div>');
     }
     function drawLib() {
@@ -840,16 +935,17 @@
           '<button class="btn btn-primary" id="as-up">' + icon('plus') + '악보 올리기 (PDF·사진)</button>' +
           '<input class="search" type="search" id="as-q" placeholder="곡 검색" value="' + esc(q) + '"></div></div>' +
         '<p class="muted small">여러 곡이 한 PDF에 들어 있어도 괜찮아요. 올리면 페이지를 곡별로 나누고 이름을 붙이는 화면이 열려요. 파일 이름의 괄호 키(예: "주의 이름 높이며 (G).pdf")는 자동으로 키 칸에 들어가요.</p>' +
-        '<section class="panel"><div class="panel-body"><div class="table-wrap"><table class="tbl"><thead><tr><th>제목</th><th>키</th><th>아티스트</th><th>쪽</th><th>콘티</th><th></th></tr></thead><tbody>' +
+        '<section class="panel"><div class="panel-body"><div class="table-wrap"><table class="tbl"><thead><tr><th>제목</th><th>키</th><th>아티스트</th><th>쪽</th><th>유튜브</th><th>콘티</th><th></th></tr></thead><tbody>' +
         (list.length ? list.map(function (s) {
           var u = usedIn(s.id).length;
           return '<tr><td data-label="제목"><b>' + esc(s.title) + '</b>' + (s.memo ? '<div class="muted small">' + esc(s.memo) + '</div>' : '') + '</td>' +
             '<td data-label="키">' + (s.song_key ? '<span class="key-chip">' + esc(s.song_key) + '</span>' : '-') + '</td>' +
             '<td data-label="아티스트">' + esc(s.artist || '-') + '</td>' +
             '<td data-label="쪽">' + (s.page_count || filesOf(s).length || '-') + (s.pages && s.pages.length ? ' <span class="chip">이미지</span>' : ' <span class="chip">PDF</span>') + '</td>' +
+            '<td data-label="유튜브"><button type="button" class="yt-set' + (s.youtube_url ? ' has' : '') + '" data-yt-edit="' + s.id + '">' + SVG.yt + (s.youtube_url ? '있음' : '넣기') + '</button></td>' +
             '<td data-label="콘티">' + (u ? u + '곳' : '-') + '</td>' +
             '<td data-label=""><div class="row-tools"><a class="btn btn-sm btn-ghost" href="#/scores/' + s.id + '">보기</a><button class="btn btn-sm btn-ghost" data-edit="' + s.id + '">수정</button><button class="icon-btn danger-text" data-del="' + s.id + '" aria-label="삭제">' + icon('trash') + '</button></div></td></tr>';
-        }).join('') : '<tr><td colspan="6"><div class="empty sm">' + (q ? '검색 결과가 없어요.' : '아직 올린 악보가 없어요.') + '</div></td></tr>') +
+        }).join('') : '<tr><td colspan="7"><div class="empty sm">' + (q ? '검색 결과가 없어요.' : '아직 올린 악보가 없어요.') + '</div></td></tr>') +
         '</tbody></table></div></div></section>';
     }
     function draw() {
@@ -868,6 +964,7 @@
       var qi = U.$('#as-q', box);
       if (qi) qi.oninput = U.debounce(function (e) { q = e.target.value.trim().toLowerCase(); draw(); var n = U.$('#as-q', ctx.el); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 200);
       U.$$('[data-edit]', box).forEach(function (b) { b.onclick = function () { editScore(map[b.dataset.edit], draw); }; });
+      U.$$('[data-yt-edit]', box).forEach(function (b) { b.onclick = function () { editYoutube(map[b.dataset.ytEdit], draw); }; });
       U.$$('[data-del]', box).forEach(function (b) {
         b.onclick = async function () {
           var s = map[b.dataset.del], u = usedIn(s.id);
@@ -892,7 +989,7 @@
       });
     }
     ctx.el.innerHTML =
-      '<div class="toolbar"><nav class="tabs-line" style="margin:0;border:0"><a href="#/admin/scores" data-tab="sets">콘티 관리</a><a href="#/admin/scores?tab=lib" data-tab="lib">악보 라이브러리 <small class="muted">' + scores.length + '</small></a></nav>' +
+      '<div class="toolbar as-top"><nav class="tabs-line" style="margin:0;border:0"><a href="#/admin/scores" data-tab="sets">콘티 관리</a><a href="#/admin/scores?tab=lib" data-tab="lib">악보 라이브러리 <small class="muted">' + scores.length + '</small></a></nav>' +
       '<div class="tb-right"><a class="btn btn-ghost btn-sm" href="#/admin/members?team=worship">' + icon('users') + '찬양팀 명단</a><a class="btn btn-ghost btn-sm" href="#/scores">' + icon('eye') + '찬양팀 화면 보기</a></div></div>' +
       '<div id="as-body"></div>';
     U.$$('[data-tab]', ctx.el).forEach(function (a) { a.onclick = function (e) { e.preventDefault(); tab = a.dataset.tab; history.replaceState(null, '', a.getAttribute('href')); draw(); }; });
@@ -952,9 +1049,10 @@
           '<button type="button" class="drag-h" aria-label="끌어서 순서 바꾸기">' + SVG.grip + '</button>' +
           '<span class="sr-no">' + (i + 1) + '</span>' +
           '<div class="sl-main"><b>' + esc(s.title) + '</b><small class="muted">' + [s.artist, s.song_key ? '원키 ' + s.song_key : '', (s.page_count || filesOf(s).length) + '쪽'].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
-          '<input class="sl-key" data-key="' + i + '" value="' + esc(it.key) + '" placeholder="' + esc(s.song_key || '키') + '" aria-label="이번 키">' +
-          '<input class="sl-imemo" data-memo="' + i + '" value="' + esc(it.memo) + '" placeholder="메모 (예: 후렴 2번)" aria-label="메모">' +
-          '<span class="sl-btns"><button type="button" class="icon-btn sm" data-mv="' + i + '|-1"' + (i === 0 ? ' disabled' : '') + ' aria-label="위로">' + SVG.up + '</button>' +
+          '<input class="sl-key" data-key="' + i + '" value="' + esc(it.key) + '" placeholder="' + esc(s.song_key || '키') + '" aria-label="이번 키" autocapitalize="characters"' + NOAUTO + '>' +
+          '<input class="sl-imemo" data-memo="' + i + '" value="' + esc(it.memo) + '" placeholder="메모 (예: 후렴 2번)" aria-label="메모"' + NOAUTO + '>' +
+          '<span class="sl-btns"><button type="button" class="icon-btn sm sl-yt' + (s.youtube_url ? ' has' : '') + '" data-yt-edit="' + i + '" title="' + (s.youtube_url ? '유튜브 링크 바꾸기' : '유튜브 링크 넣기') + '" aria-label="유튜브 링크">' + SVG.yt + '</button>' +
+          '<button type="button" class="icon-btn sm" data-mv="' + i + '|-1"' + (i === 0 ? ' disabled' : '') + ' aria-label="위로">' + SVG.up + '</button>' +
           '<button type="button" class="icon-btn sm" data-mv="' + i + '|1"' + (i === items.length - 1 ? ' disabled' : '') + ' aria-label="아래로">' + SVG.down + '</button>' +
           '<button type="button" class="icon-btn sm danger-text" data-rm="' + i + '" aria-label="콘티에서 빼기">' + icon('close') + '</button></span></li>';
       }).join('') : '<li class="empty sm">아직 곡이 없어요. 위의 버튼으로 곡을 추가해 주세요.</li>';
@@ -968,6 +1066,7 @@
         };
       });
       U.$$('[data-rm]', ol).forEach(function (b) { b.onclick = function () { items.splice(+b.dataset.rm, 1); setDirty(true); drawList(); }; });
+      U.$$('[data-yt-edit]', ol).forEach(function (b) { b.onclick = function () { editYoutube(map[String(items[+b.dataset.ytEdit].score_id)], drawList); }; });
       bindDrag(ol, function (order) {
         var changed = order.some(function (v, k) { return v !== k; });
         if (changed) { items = order.map(function (k) { return items[k]; }); setDirty(true); }
