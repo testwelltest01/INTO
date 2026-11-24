@@ -22,7 +22,7 @@ window.createDemoApi = function (DEFAULTS) {
     var thisSunday = U.sundayOf(new Date());
     var lastSunday = U.ymd(new Date(U.toDate(thisSunday).getTime() - 7 * 864e5));
     var db = {
-      seq: { profiles: 10, notices: 10, weekly_questions: 10, answers: 10, qna: 10, inquiries: 10, photos: 100, scores: 1 },
+      seq: { profiles: 10, notices: 10, weekly_questions: 10, answers: 10, qna: 10, inquiries: 10, photos: 100, scores: 1, setlists: 1 },
       profiles: [
         { id: 'u-admin', email: 'admin@into.demo', pw: hash('into1234'), name: '관리자', phone: '010-0000-0000', role: 'admin', status: 'active', created_at: ago(30) },
         { id: 'u-member', email: 'member@into.demo', pw: hash('into1234'), name: '김인투', phone: '010-1234-5678', role: 'member', status: 'active', teams: ['worship'], created_at: ago(12) },
@@ -53,6 +53,7 @@ window.createDemoApi = function (DEFAULTS) {
         { id: 1, name: '홍길동', phone: '010-5555-6666', email: '', kind: '예배 참석', preferred_date: thisSunday, message: '판교에서 일하는 직장인인데 주일 예배에 참석해 보고 싶어요.', status: 'new', admin_memo: '', created_at: ago(0, 3) }
       ],
       scores: [],
+      setlists: [],
       score_files: {},
       photos: DEFAULTS.photos.map(function (p, i) { var o = clone(p); o.id = i + 1; o.created_at = ago(20); return o; })
     };
@@ -355,23 +356,20 @@ window.createDemoApi = function (DEFAULTS) {
     scores: {
       list: async function () {
         if (!inTeam('worship')) return [];
-        return clone((load().scores || []).slice().sort(function (a, b) {
-          var da = a.worship_date || '', db2 = b.worship_date || '';
-          if (da !== db2) return !da ? 1 : !db2 ? -1 : (da < db2 ? 1 : -1);
-          return (a.sort_order || 0) - (b.sort_order || 0) || (a.title < b.title ? -1 : 1);
-        }));
+        return clone((load().scores || []).slice().sort(function (a, b) { return a.title < b.title ? -1 : a.title > b.title ? 1 : 0; }));
       },
       get: async function (id) { if (!inTeam('worship')) throw new Error('찬양팀만 볼 수 있어요.'); var r = find('scores', id); if (!r) throw new Error('악보를 찾을 수 없어요.'); return clone(r); },
       save: async function (o) {
         needAdmin(); var d = load(); d.scores = d.scores || []; var r;
         if (o.id) { r = find('scores', o.id); Object.assign(r, o, { updated_at: now() }); }
-        else { r = Object.assign({ sort_order: 0 }, o, { id: nextId('scores'), created_at: now() }); d.scores.push(r); }
+        else { r = Object.assign({ sort_order: 0, pages: [] }, o, { id: nextId('scores'), created_at: now() }); d.scores.push(r); }
         persist(); return clone(r);
       },
       remove: async function (id) {
         needAdmin(); var d = load(), r = find('scores', id);
         d.scores = d.scores.filter(function (x) { return String(x.id) !== String(id); });
-        if (r && d.score_files) delete d.score_files[r.file_path];
+        if (r && d.score_files) { delete d.score_files[r.file_path]; (r.pages || []).forEach(function (p) { delete d.score_files[p]; }); }
+        (d.setlists || []).forEach(function (sl) { sl.items = (sl.items || []).filter(function (it) { return String(it.score_id) !== String(id); }); });
         persist();
       },
       uploadFile: async function (file) {
@@ -382,14 +380,40 @@ window.createDemoApi = function (DEFAULTS) {
         d.score_files[path] = await U.blobToDataURL(file); persist();
         return { path: path, size: file.size, name: file.name };
       },
-      removeFile: async function (path) { var d = load(); if (d.score_files) { delete d.score_files[path]; persist(); } },
-      fetchFile: async function (row) {
+      // 페이지 이미지 한 장 (여러 곡 PDF를 나눈 경우)
+      uploadImage: async function (blob, path) {
+        needAdmin();
+        var d = load(); d.score_files = d.score_files || {};
+        path = 'demo/' + path;
+        d.score_files[path] = await U.blobToDataURL(blob);
+        try { persist(); } catch (e) { delete d.score_files[path]; throw new Error('데모 모드 저장 공간이 가득 찼어요. 실제 운영(Supabase)에서는 제한이 없어요.'); }
+        return path;
+      },
+      removeFiles: async function (paths) { var d = load(); if (d.score_files) { (paths || []).forEach(function (p) { delete d.score_files[p]; }); persist(); } },
+      removeFile: async function (path) { return api.scores.removeFiles([path]); },
+      fetchBlob: async function (path) {
         if (!inTeam('worship')) throw new Error('찬양팀만 볼 수 있어요.');
-        var url = (load().score_files || {})[row.file_path]; if (!url) throw new Error('파일을 찾을 수 없어요.');
-        var b64 = url.split(',')[1], bin = atob(b64), buf = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-        return buf.buffer;
-      }
+        var url = (load().score_files || {})[path]; if (!url) throw new Error('파일을 찾을 수 없어요.');
+        return (await fetch(url)).blob();
+      },
+      fetchFile: async function (row) { return (await api.scores.fetchBlob(row.file_path)).arrayBuffer(); }
+    },
+
+    // 콘티: 날짜별 곡 순서
+    setlists: {
+      list: async function () {
+        if (!inTeam('worship')) return [];
+        return clone((load().setlists || []).slice().sort(byDesc('worship_date')));
+      },
+      get: async function (id) { if (!inTeam('worship')) throw new Error('찬양팀만 볼 수 있어요.'); var d = load(); d.setlists = d.setlists || []; var r = find('setlists', id); if (!r) throw new Error('콘티를 찾을 수 없어요.'); return clone(r); },
+      save: async function (o) {
+        needAdmin(); var d = load(); d.setlists = d.setlists || []; var r;
+        if (!o.id && !o.worship_date) throw new Error('콘티 날짜를 정해 주세요.');
+        if (o.id) { r = find('setlists', o.id); Object.assign(r, o, { updated_at: now() }); }
+        else { r = Object.assign({ title: '', memo: '', items: [] }, o, { id: nextId('setlists'), created_at: now(), updated_at: now() }); d.setlists.push(r); }
+        persist(); return clone(r);
+      },
+      remove: async function (id) { needAdmin(); var d = load(); d.setlists = (d.setlists || []).filter(function (x) { return String(x.id) !== String(id); }); persist(); }
     },
 
     stats: async function () {

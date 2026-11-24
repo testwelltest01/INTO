@@ -161,7 +161,7 @@
     var items = [
       ['/admin', 'chart', '대시보드'],
       ['/admin/questions', 'book', '나눔지'],
-      ['/admin/scores', 'music', '찬양팀 악보'],
+      ['/admin/scores', 'music', '찬양팀 콘티·악보'],
       ['/admin/qna', 'mail', '질문 게시판'],
       ['/admin/notices', 'news', '교회 소식'],
       ['/admin/gallery', 'image', '갤러리'],
@@ -188,6 +188,7 @@
     U.$$('[data-nav]').forEach(function (a) {
       var n = a.getAttribute('data-nav');
       var on = n === '/' || n === '/admin' ? path === n : (path === n || path.indexOf(n + '/') === 0);
+      if (n === '/admin/scores' && path.indexOf('/admin/setlists') === 0) on = true;
       if (n === '/q' && path.indexOf('/q/board') === 0 && a.closest('.topnav')) on = false;
       if (n === '/me' && (path === '/login' || path === '/signup')) on = true;
       a.classList.toggle('active', on);

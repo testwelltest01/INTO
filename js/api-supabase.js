@@ -50,7 +50,8 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
       'sermon_title', 'preacher', 'scripture_text', 'questions', 'application', 'prayer', 'attachment_url', 'attachment_name', 'publish_at'],
     inquiries: ['name', 'phone', 'email', 'kind', 'preferred_date', 'message'],
     photos: ['url', 'thumb_url', 'caption', 'tag', 'sort'],
-    scores: ['title', 'artist', 'song_key', 'memo', 'worship_date', 'sort_order', 'file_path', 'file_name', 'file_size', 'page_count']
+    scores: ['title', 'artist', 'song_key', 'memo', 'worship_date', 'sort_order', 'file_path', 'file_name', 'file_size', 'page_count', 'pages'],
+    setlists: ['worship_date', 'title', 'memo', 'items']
   };
 
   async function saveRow(table, o) {
@@ -272,10 +273,10 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
       }
     },
 
-    // 찬양팀 악보 (비공개 버킷 'scores')
+    // 찬양팀 악보 (비공개 버킷 'scores') — PDF 원본 또는 페이지 이미지 목록
     scores: {
       list: async function () {
-        return ok(await sb.from('scores').select('*').order('worship_date', { ascending: false, nullsFirst: false }).order('sort_order', { ascending: true }).order('title', { ascending: true }));
+        return ok(await sb.from('scores').select('*').order('title', { ascending: true }));
       },
       get: async function (id) {
         var r = ok(await sb.from('scores').select('*').eq('id', id).maybeSingle());
@@ -283,21 +284,43 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
       },
       save: function (o) { return saveRow('scores', o); },
       remove: async function (id) {
-        var r = ok(await sb.from('scores').select('file_path').eq('id', id).maybeSingle());
-        ok(await sb.from('scores').delete().eq('id', id));
-        if (r && r.file_path) await sb.storage.from('scores').remove([r.file_path]);
+        var r = ok(await sb.from('scores').select('file_path, pages').eq('id', id).maybeSingle());
+        ok(await sb.from('scores').delete().eq('id', id));   // 콘티에서는 DB 트리거가 자동으로 빼 줌
+        var paths = r ? [r.file_path].concat(r.pages || []).filter(Boolean) : [];
+        if (paths.length) await sb.storage.from('scores').remove(paths);
       },
       uploadFile: async function (file) {
+        if (!isAdmin()) throw new Error('악보는 관리자만 올릴 수 있어요.');
         if (file.size > 30 * 1024 * 1024) throw new Error('30MB 이하 PDF만 올릴 수 있어요.');
         var d = new Date(), path = d.getFullYear() + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.pdf';
         ok(await sb.storage.from('scores').upload(path, file, { contentType: 'application/pdf', cacheControl: '3600', upsert: false }));
         return { path: path, size: file.size, name: file.name };
       },
+      uploadImage: async function (blob, path) {
+        if (!isAdmin()) throw new Error('악보는 관리자만 올릴 수 있어요.');
+        ok(await sb.storage.from('scores').upload(path, blob, { contentType: blob.type || 'image/jpeg', cacheControl: '31536000', upsert: false }));
+        return path;
+      },
+      removeFiles: async function (paths) { paths = (paths || []).filter(Boolean); if (paths.length) await sb.storage.from('scores').remove(paths); },
       removeFile: async function (path) { if (path) await sb.storage.from('scores').remove([path]); },
-      fetchFile: async function (row) {
-        var blob = ok(await sb.storage.from('scores').download(row.file_path));
-        return blob.arrayBuffer();
-      }
+      fetchBlob: async function (path) { return ok(await sb.storage.from('scores').download(path)); },
+      fetchFile: async function (row) { return (await api.scores.fetchBlob(row.file_path)).arrayBuffer(); }
+    },
+
+    // 콘티: 날짜별 곡 순서 (items = [{score_id, key, memo}])
+    setlists: {
+      list: async function () {
+        return ok(await sb.from('setlists').select('*').order('worship_date', { ascending: false }).order('id', { ascending: false }));
+      },
+      get: async function (id) {
+        var r = ok(await sb.from('setlists').select('*').eq('id', id).maybeSingle());
+        if (!r) throw new Error('콘티를 찾을 수 없어요. (찬양팀만 볼 수 있어요)'); return r;
+      },
+      save: function (o) {
+        if (!o.id && !o.worship_date) return Promise.reject(new Error('콘티 날짜를 정해 주세요.'));
+        return saveRow('setlists', o);
+      },
+      remove: async function (id) { ok(await sb.from('setlists').delete().eq('id', id)); }
     },
 
     stats: async function () {
