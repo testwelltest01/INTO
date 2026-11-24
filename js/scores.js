@@ -19,6 +19,10 @@
     down: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
     zoom: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg>',
     yt: '<svg class="ic yt-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="4.5" width="21" height="15" rx="4.5" fill="currentColor"/><path d="M10 8.8v6.4l5.6-3.2z" fill="#fff"/></svg>',
+    sliders: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>',
+    vscroll: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="8.5" rx="1.5"/><rect x="5" y="13" width="14" height="8.5" rx="1.5"/></svg>',
+    flip: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="1.5"/><path d="M4 10l-2 2 2 2M20 10l2 2-2 2"/></svg>',
+    sun: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>',
     merge: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>'
   };
 
@@ -324,11 +328,19 @@
           '<div class="pv-tools">' +
             '<button class="icon-btn" data-zoom="-1" aria-label="축소"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>' +
             '<button class="icon-btn" data-zoom="1" aria-label="확대"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>' +
-            (row.youtube_url ? '<button class="pv-btn pv-ytb" data-yt aria-pressed="false">' + SVG.yt + '<span>유튜브</span></button>' : '') +
-            '<button class="pv-btn" data-mode></button>' +
-            ('wakeLock' in navigator ? '<button class="pv-btn" data-wake aria-pressed="false">' + icon('eye') + '<span>화면 켜 두기</span></button>' : '') +
+            (row.youtube_url ? '<button class="pv-btn pv-tb pv-ytb" data-yt aria-pressed="false">' + SVG.yt + '<span>유튜브</span></button>' : '') +
+            '<button class="pv-btn pv-tb" data-opts aria-expanded="false">' + SVG.sliders + '<span>보기 설정</span></button>' +
           '</div>' +
         '</header>' +
+        '<div class="pv-pop" id="pv-pop" hidden role="dialog" aria-label="보기 설정">' +
+          '<p class="pv-pop-h">넘기는 방식</p>' +
+          '<div class="pv-seg">' +
+            '<button type="button" data-setmode="scroll">' + SVG.vscroll + '<span><b>세로로 이어 보기</b><small>위아래로 스크롤해서 다음 쪽</small></span></button>' +
+            '<button type="button" data-setmode="page">' + SVG.flip + '<span><b>한 장씩 넘기기</b><small>옆으로 밀거나 화면 양옆을 탭</small></span></button>' +
+          '</div>' +
+          ('wakeLock' in navigator ? '<label class="pv-switch">' + SVG.sun + '<span><b>화면 꺼짐 방지</b><small>악보를 보는 동안 화면이 꺼지지 않아요</small></span><input type="checkbox" data-wake></label>' : '') +
+          '<div class="pv-zoomrow"><span>글씨 크기</span><button type="button" class="icon-btn" data-zoom="-1" aria-label="작게">−</button><b id="pv-zl">100%</b><button type="button" class="icon-btn" data-zoom="1" aria-label="크게">+</button></div>' +
+        '</div>' +
         '<div class="pv-pages" id="pv-pages"><div class="loading"><span class="spinner"></span></div></div>' +
         '<div class="pv-tap pv-tap-l" data-tap="-1"></div><div class="pv-tap pv-tap-r" data-tap="1"></div>' +
         (row.youtube_url ? '<div class="pv-yt" id="pv-yt" hidden></div>' : '') +
@@ -340,8 +352,12 @@
       '</div>';
 
     var pv = U.$('#pv', ctx.el), pagesEl = U.$('#pv-pages', ctx.el), pgLabel = U.$('#pv-pg', ctx.el);
-    function savePrefs() { try { localStorage.setItem('into_score_prefs', JSON.stringify({ mode: mode })); } catch (e) { } }
-    function setModeBtn() { var b = U.$('[data-mode]', ctx.el); b.innerHTML = mode === 'scroll' ? icon('book') + '<span>한 장씩</span>' : icon('menu') + '<span>세로 스크롤</span>'; pv.classList.toggle('mode-page', mode === 'page'); }
+    var wantWake = prefs.wake !== false;   // 기본: 화면 꺼짐 방지 켬
+    function savePrefs() { try { localStorage.setItem('into_score_prefs', JSON.stringify({ mode: mode, wake: wantWake })); } catch (e) { } }
+    function setModeBtn() {
+      U.$$('[data-setmode]', ctx.el).forEach(function (b) { var on = b.dataset.setmode === mode; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      pv.classList.toggle('mode-page', mode === 'page');
+    }
     function updateLabel() { if (src) pgLabel.textContent = (pgLabel.previousSibling ? ' · ' : '') + page + '/' + src.n + '쪽'; }
 
     // 페이지 그리기: 화면 크기 × 확대 × 기기 해상도에 맞춰 선명하게
@@ -368,15 +384,17 @@
       if (mode === 'scroll') observe();
       updateLabel();
     }
-    var io = null;
-    function observe() {
-      if (io) io.disconnect();
-      if (!('IntersectionObserver' in window)) return;
-      io = new IntersectionObserver(function (ents) {
-        ents.forEach(function (e) { if (e.isIntersecting) { page = +e.target.dataset.page; updateLabel(); } });
-      }, { root: pagesEl, threshold: 0.5 });
-      U.$$('.pv-page', pagesEl).forEach(function (el) { io.observe(el); });
+    // 지금 보고 있는 쪽 = 화면 위쪽 40% 지점에 걸친 쪽
+    var io = null, scrollRaf = 0;
+    function curFromScroll() {
+      scrollRaf = 0;
+      var y = pagesEl.scrollTop + pagesEl.clientHeight * 0.4, n = 1;
+      U.$$('.pv-page', pagesEl).forEach(function (el) { if (el.offsetTop <= y) n = +el.dataset.page; });
+      if (n !== page) { page = n; updateLabel(); }
     }
+    function onPagesScroll() { if (mode === 'scroll' && !scrollRaf) scrollRaf = requestAnimationFrame(curFromScroll); }
+    pagesEl.addEventListener('scroll', onPagesScroll, { passive: true });
+    function observe() { page = 1; curFromScroll(); }
     function go(delta) {
       if (!src) return;
       if (mode === 'page') {
@@ -389,17 +407,33 @@
       }
     }
     function song(delta) { var t = seq[idx + delta]; if (t) App.go(songHref(t), true); }
-    function setZoom(z) { zoom = Math.max(1, Math.min(4, Math.round(z * 100) / 100)); renderAll(); }
+    function setZoom(z) { zoom = Math.max(1, Math.min(4, Math.round(z * 100) / 100)); var zl = U.$('#pv-zl', ctx.el); if (zl) zl.textContent = Math.round(zoom * 100) + '%'; renderAll(); }
 
     U.$('[data-back]', ctx.el).onclick = function () { App.go(backTo); };
     U.$$('[data-zoom]', ctx.el).forEach(function (b) { b.onclick = function () { setZoom(zoom + (+b.dataset.zoom) * 0.25); }; });
-    U.$('[data-mode]', ctx.el).onclick = function () { mode = mode === 'scroll' ? 'page' : 'scroll'; zoom = 1; savePrefs(); setModeBtn(); renderAll(); };
+    U.$$('[data-setmode]', ctx.el).forEach(function (b) {
+      b.onclick = function () { if (mode === b.dataset.setmode) return; mode = b.dataset.setmode; zoom = 1; var zl = U.$('#pv-zl', ctx.el); if (zl) zl.textContent = '100%'; savePrefs(); setModeBtn(); renderAll(); };
+    });
+    // 보기 설정 창
+    var pop = U.$('#pv-pop', ctx.el), optBtn = U.$('[data-opts]', ctx.el);
+    function popOpen(open) { pop.hidden = !open; optBtn.classList.toggle('on', open); optBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    optBtn.onclick = function (e) { e.stopPropagation(); popOpen(pop.hidden); };
+    function onDocDown(e) { if (!pop.hidden && !pop.contains(e.target) && !optBtn.contains(e.target)) popOpen(false); }
+    document.addEventListener('pointerdown', onDocDown, true);
     U.$$('[data-song]', ctx.el).forEach(function (b) { b.onclick = function () { song(+b.dataset.song); }; });
     U.$$('[data-tap]', ctx.el).forEach(function (b) { b.onclick = function () { if (mode === 'page' && zoom === 1) go(+b.dataset.tap); }; });
     var wb = U.$('[data-wake]', ctx.el);
-    async function wakeOn() { try { wake = await navigator.wakeLock.request('screen'); wb.classList.add('on'); wb.setAttribute('aria-pressed', 'true'); wake.addEventListener('release', function () { if (wb) { wb.classList.remove('on'); wb.setAttribute('aria-pressed', 'false'); } }); } catch (e) { U.toast('이 기기에서는 화면 켜 두기를 쓸 수 없어요.'); } }
-    if (wb) wb.onclick = function () { if (wake) { wake.release(); wake = null; } else wakeOn(); };
-    function onVis() { if (document.visibilityState === 'visible' && wb && wb.classList.contains('on') && !wake) wakeOn(); }
+    async function wakeOn(quiet) {
+      if (wake || destroyed) return;
+      try { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', function () { wake = null; }); }
+      catch (e) { if (!quiet) { U.toast('이 기기에서는 화면 꺼짐 방지를 쓸 수 없어요.'); if (wb) wb.checked = false; } }
+    }
+    if (wb) {
+      wb.checked = wantWake;
+      wb.onchange = function () { wantWake = wb.checked; savePrefs(); if (wantWake) wakeOn(); else if (wake) { wake.release(); wake = null; } };
+      if (wantWake) wakeOn(true);
+    }
+    function onVis() { if (document.visibilityState === 'visible' && wantWake && wb && !wake) wakeOn(true); }
     document.addEventListener('visibilitychange', onVis);
 
     // 키보드·블루투스 페달
@@ -407,7 +441,7 @@
       if (!document.body.contains(pv)) return;
       if (['ArrowRight', 'PageDown', ' ', 'ArrowDown'].indexOf(e.key) >= 0) { e.preventDefault(); go(1); }
       else if (['ArrowLeft', 'PageUp', 'ArrowUp'].indexOf(e.key) >= 0) { e.preventDefault(); go(-1); }
-      else if (e.key === 'Escape') App.go(backTo);
+      else if (e.key === 'Escape') { if (!pop.hidden) popOpen(false); else App.go(backTo); }
     }
     document.addEventListener('keydown', onKey);
 
@@ -466,10 +500,11 @@
       document.body.classList.remove('viewer-mode');
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('visibilitychange', onVis);
+      document.removeEventListener('pointerdown', onDocDown, true);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
       if (wake) { try { wake.release(); } catch (e) { } wake = null; }
-      if (io) io.disconnect();
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
       if (src) src.destroy();
     }
     App.onLeave(cleanup);
