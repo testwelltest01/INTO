@@ -1,24 +1,34 @@
 {
   "name": "INTO CHURCH 인투처치",
-  "short_name": "INTO CHURCH",
-  "description": "더 깊이, 더 가까이, 더 낮게 — 판교 인투처치",
+  "short_name": "인투처치",
+  "description": "더 깊이, 더 가까이, 더 낮게 — 판교 인투처치. 이번 주 질문 나눔, 교회 소식, 주일 예배 안내를 앱으로 만나 보세요.",
   "lang": "ko",
+  "dir": "ltr",
   "id": "./",
-  "start_url": "./#/",
+  "start_url": "./?source=pwa#/",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "background_color": "#DBD7CE",
   "theme_color": "#423B36",
-  "categories": ["lifestyle", "social"],
+  "categories": ["lifestyle", "social", "education"],
+  "prefer_related_applications": false,
+  "launch_handler": { "client_mode": ["navigate-existing", "auto"] },
   "icons": [
     { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
+  "screenshots": [
+    { "src": "assets/screenshots/mobile-home.jpg", "sizes": "780x1688", "type": "image/jpeg", "form_factor": "narrow", "label": "홈 — 더 깊이, 더 가까이, 더 낮게" },
+    { "src": "assets/screenshots/mobile-principles.jpg", "sizes": "780x1688", "type": "image/jpeg", "form_factor": "narrow", "label": "Deeper · Closer · Lower" },
+    { "src": "assets/screenshots/mobile-worship.jpg", "sizes": "780x1688", "type": "image/jpeg", "form_factor": "narrow", "label": "주일 예배 안내" },
+    { "src": "assets/screenshots/wide-home.jpg", "sizes": "1280x800", "type": "image/jpeg", "form_factor": "wide", "label": "PC 화면" }
+  ],
   "shortcuts": [
-    { "name": "이번 주 질문", "url": "./#/q", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "교회 소식", "url": "./#/news", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "예배 안내", "url": "./#/worship", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
+    { "name": "이번 주 질문", "short_name": "질문", "url": "./#/q", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "교회 소식", "short_name": "소식", "url": "./#/news", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "주일 예배 안내", "short_name": "예배", "url": "./#/worship", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

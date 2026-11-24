@@ -534,6 +534,13 @@
             '<label class="field"><span>예배 문의 유형 (한 줄씩)</span><textarea name="kinds" rows="4">' + esc((s.inquiry_kinds || []).join('\n')) + '</textarea></label>' +
             '<div class="row-gap end"><button class="btn btn-primary">저장</button></div>' +
           '</form>') +
+        panel('앱 설치 안내 (QR · 단톡방 공지)',
+          '<div class="install-pc"><div class="is-qr" data-admin-qr></div><div>' +
+            '<p class="small">성도들에게 아래 <b>설치 안내 주소</b>를 보내거나, QR 이미지를 주보·화면에 띄워 주세요. 휴대폰에 맞는 설치 방법이 자동으로 나와요.</p>' +
+            '<p><code>' + esc(window.Install ? Install.installURL() : appUrl) + '</code></p>' +
+            '<div class="row-gap"><button class="btn btn-sm btn-primary" data-qr-png>' + icon('download') + 'QR 이미지 (인쇄용)</button>' +
+            '<button class="btn btn-sm btn-ghost" data-copy-notice>' + icon('send') + '단톡방 안내문 복사</button></div>' +
+          '</div></div>') +
         panel('앱 정보',
           '<dl class="dl"><dt>데이터 모드</dt><dd>' + (App.api.mode === 'demo' ? '<span class="chip chip-warn">데모 (이 브라우저에만 저장)</span>' : '<span class="chip chip-ok">Supabase 연결됨</span>') + '</dd>' +
           '<dt>앱 주소</dt><dd><code>' + esc(appUrl) + '</code> <button class="btn btn-sm btn-ghost" data-copy>복사</button></dd>' +
@@ -547,7 +554,17 @@
       await App.api.content.set('settings', v);
       App.content = await App.api.content.getAll(); U.toast('설정을 저장했어요.');
     });
-    ctx.el.querySelector('[data-copy]').onclick = function () { navigator.clipboard && navigator.clipboard.writeText(appUrl).then(function () { U.toast('앱 주소를 복사했어요.'); }); };
+    ctx.el.querySelector('[data-copy]').onclick = function () { Install.copy(appUrl, '앱 주소를 복사했어요.'); };
+    var iu = Install.installURL();
+    Install.qrSVG(iu).then(function (svg) { var b = ctx.el.querySelector('[data-admin-qr]'); if (b) b.innerHTML = svg; });
+    ctx.el.querySelector('[data-qr-png]').onclick = guard(async function () {
+      var blob = await Install.qrPNG(iu);
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '인투처치_앱설치_QR.png';
+      document.body.appendChild(a); a.click(); a.remove();
+    });
+    ctx.el.querySelector('[data-copy-notice]').onclick = function () {
+      Install.copy('[인투처치 앱 안내]\n이번 주 질문 나눔, 교회 소식, 예배 안내를 앱으로 만나 보세요 🙂\n\n👉 ' + iu + '\n\n· 아이폰: Safari로 열고 공유 → 홈 화면에 추가\n· 안드로이드: Chrome으로 열고 "앱 설치"\n(카카오톡에서 열리면 오른쪽 위 메뉴에서 다른 브라우저로 열어 주세요)', '안내문을 복사했어요. 단톡방에 붙여 넣어 주세요.');
+    };
     var rs = ctx.el.querySelector('[data-reset]');
     if (rs) rs.onclick = async function () { if (!(await U.confirm('데모 데이터를 처음 상태로 되돌릴까요?', '초기화', true))) return; App.api.resetDemo(); location.hash = '#/'; location.reload(); };
   }, Object.assign({ title: '설정' }, A));

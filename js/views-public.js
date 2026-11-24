@@ -78,7 +78,8 @@
       (photos.length ? '<section class="container home-gallery"><div class="section-row"><h2 class="section-title sm">갤러리</h2><a href="#/gallery" class="more">더 보기 ' + icon('chevron-right') + '</a></div>' +
         '<div class="photo-grid">' + photos.map(function (p, i) { return '<button class="ph" data-ph="' + i + '"><img src="' + esc(p.thumb_url || p.url) + '" alt="' + esc(p.caption || '') + '" loading="lazy"></button>'; }).join('') + '</div></section>' : '') +
 
-      (App.canInstall() ? '<section class="container"><button class="install-card" data-install>' + U.markSVG() + '<div><b>홈 화면에 인투처치 앱 추가하기</b><span>앱처럼 바로 열고, 이번 주 질문을 놓치지 마세요</span></div>' + icon('chevron-right') + '</button></section>' : '');
+      (App.canInstall() ? '<section class="container"><button class="install-card" data-install>' + U.markSVG() + '<div><b>홈 화면에 인투처치 앱 추가하기</b><span>앱처럼 바로 열고, 이번 주 질문을 놓치지 마세요</span></div>' + icon('chevron-right') + '</button></section>'
+        : (window.Install && !Install.env.mobile && !Install.standalone() ? '<section class="container"><div class="install-card pc"><div class="is-qr" data-home-qr></div><div><b>휴대폰에 인투처치 앱 설치하기</b><span>휴대폰 카메라로 QR 코드를 찍으면 설치 안내가 열려요</span><a class="more" href="#/install">설치 안내 보기 ' + icon('chevron-right') + '</a></div></div></section>' : ''));
 
     // 슬라이드
     var sl = ctx.el.querySelector('#slides');
@@ -98,6 +99,8 @@
       b.onclick = function () { U.lightbox(photos.map(function (p) { return p.url; }), +b.dataset.ph); };
     });
     var ib = ctx.el.querySelector('[data-install]'); if (ib) ib.onclick = App.install;
+    var hq = ctx.el.querySelector('[data-home-qr]');
+    if (hq) Install.qrSVG(Install.installURL()).then(function (svg) { hq.innerHTML = svg; }).catch(function () { });
   }, { title: '' });
 
   function noticeRow(n) {

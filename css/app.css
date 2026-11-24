@@ -609,3 +609,54 @@ body.admin-nav-open .admin-dim { opacity: 1; pointer-events: auto; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 @media print { .topbar, .tabbar, .admin-side, .admin-top, .demo-banner { display: none !important; } .admin-main { margin: 0 !important; } }
+
+/* =====================================================================
+ * 앱 설치 유도
+ * ===================================================================== */
+.install-pill { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border-radius: 99px; border: 0; background: var(--ink); color: var(--paper); font-size: .8rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.install-pill .ic { width: 16px; height: 16px; }
+.topbar.scrolled .install-pill { background: var(--paper); color: var(--ink); }
+.btn-lg { min-height: 54px; font-size: 1.05rem; border-radius: 12px; }
+.link-btn { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--muted); font-size: .88rem; padding: 8px 4px; cursor: pointer; }
+.link-btn .ic { width: 15px; height: 15px; }
+.center { text-align: center; }
+.modal-install { max-width: 460px; }
+.modal-install .modal-body { padding: 0; }
+.install-sheet { padding: 18px 20px 10px; display: grid; gap: 14px; }
+.is-head { display: flex; align-items: center; gap: 12px; }
+.is-head > div { flex: 1; display: flex; flex-direction: column; }
+.is-head b { font-size: 1.08rem; }
+.is-head span { font-size: .82rem; color: var(--muted); line-height: 1.4; }
+.is-icon { width: 52px; height: 52px; border-radius: 12px; box-shadow: 0 2px 8px rgba(66, 59, 54, .25); flex: none; }
+.is-lead { margin: 0; font-size: .98rem; line-height: 1.6; }
+.is-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.is-steps li { display: flex; gap: 12px; align-items: flex-start; background: var(--bg-2); border-radius: 12px; padding: 12px 14px; font-size: .95rem; line-height: 1.55; }
+.is-steps .ic { width: 1.25em; height: 1.25em; vertical-align: -.28em; color: #0a84ff; margin: 0 1px; }
+.is-steps.big li { font-size: 1rem; padding: 14px 16px; }
+.is-n { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; font-size: .8rem; font-weight: 700; margin-top: 1px; }
+.is-perks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: .9rem; color: var(--ink-2); }
+.is-perks .ic { width: 16px; height: 16px; color: var(--ok); margin-right: 6px; vertical-align: -3px; }
+.is-foot { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 4px; }
+.is-qr { width: 180px; height: 180px; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #fff; }
+.is-qr.big { width: 220px; height: 220px; }
+.is-qr svg { width: 100%; height: 100%; display: block; }
+.is-pointer { position: fixed; left: 50%; bottom: calc(6px + var(--safe-b)); transform: translateX(-50%); z-index: 120; display: flex; flex-direction: column-reverse; align-items: center; color: #fff; font-size: .78rem; font-weight: 600; animation: bob 1.1s ease-in-out infinite; pointer-events: none; }
+.is-pointer .ic { width: 34px; height: 34px; stroke-width: 2.4; }
+@keyframes bob { 50% { transform: translate(-50%, 8px); } }
+.install-card.pc { cursor: default; align-items: center; }
+.install-card.pc .is-qr { width: 104px; height: 104px; margin: 0; flex: none; }
+.install-card.pc .more { margin-top: 6px; }
+.install-pc { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.install-pc .is-qr { margin: 0; flex: none; }
+.install-pc > div:last-child { flex: 1; min-width: 200px; }
+.install-guide { margin: 14px 0; }
+.seg-tabs.plain { margin: 18px 0 0; }
+.drawer-install { font-weight: 600; }
+/* 앱(홈 화면)으로 실행 중일 때 */
+html.standalone .install-pill, html.standalone .install-card { display: none !important; }
+html.standalone.ios body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); background: var(--ink); z-index: 999; }
+html.standalone { overscroll-behavior-y: none; }
+html.standalone body { -webkit-user-select: none; user-select: none; }
+html.standalone input, html.standalone textarea, html.standalone .article-body, html.standalone .a-body, html.standalone .rb-body { -webkit-user-select: text; user-select: text; }
+@media (min-width: 960px) { .install-pill { display: none; } }
+.modal-wrap:has(.is-pointer) .modal { margin-bottom: 70px; border-radius: 18px; }

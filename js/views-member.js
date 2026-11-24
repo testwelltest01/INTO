@@ -89,6 +89,7 @@
         App.refreshChrome();
         U.toast(App.profile() && App.profile().status === 'pending' ? '가입 완료! 관리자 승인 후 이용할 수 있어요.' : '가입을 환영합니다!');
         App.go(ctx.query.next && ctx.query.next.charAt(0) === '/' ? ctx.query.next : '/me', true);
+        if (window.Install) Install.maybeAuto(true);
       } catch (err) { U.toast(U.errMsg(err), 'error'); U.busy(btn, false); }
     };
   }, { title: '회원가입' });
@@ -151,7 +152,8 @@
         (qnas.length ? '<div class="list-card">' + qnas.slice(0, 10).map(qnaRow).join('') + '</div>' : '<div class="empty sm">올린 질문이 없어요. <a href="#/q/board/new">질문하기</a></div>') +
 
         '<div class="menu-list">' +
-          (App.canInstall() ? '<button data-install>' + icon('install') + '홈 화면에 앱 추가</button>' : '') +
+          (App.canInstall() ? '<button data-install>' + icon('install') + '앱 설치 (홈 화면에 추가)</button>' : '') +
+          '<button data-share-app>' + icon('send') + '앱 링크 공유하기</button>' +
           '<button data-pw>' + icon('lock') + '비밀번호 변경</button>' +
           '<a href="#/contact">' + icon('mail') + '예배 문의 / 새가족 신청</a>' +
           '<button data-logout>' + icon('logout') + '로그아웃</button>' +
@@ -195,6 +197,7 @@
       catch (err) { U.toast(U.errMsg(err), 'error'); }
     };
     var ib = ctx.el.querySelector('[data-install]'); if (ib) ib.onclick = App.install;
+    ctx.el.querySelector('[data-share-app]').onclick = function () { window.Install && Install.share(); };
   }, { title: 'MY', auth: true });
 
   /* ================= 질문 (이번 주 질문 + 질문 게시판) ================= */

@@ -10,7 +10,6 @@
     session: null,          // { user, profile } | null
     routes: [],
     shell: null,            // 'public' | 'admin'
-    deferredInstall: null,
     renderId: 0
   };
 
@@ -193,11 +192,13 @@
       var acts = $('#top-actions');
       if (acts) {
         acts.innerHTML =
+          (App.canInstall() ? '<button class="install-pill" data-install-top>' + icon('install') + '<span>앱 설치</span></button>' : '') +
           (App.isAdmin() ? '<a href="#/admin" class="btn btn-sm btn-outline-top hide-sm">' + icon('settings') + '<span>관리</span></a>' : '') +
           (p ? '<a href="#/me" class="top-user hide-sm">' + icon('user') + '<span>' + esc(p.name || 'MY') + '</span></a>'
              : '<a href="#/login" class="top-user hide-sm">' + icon('user') + '<span>로그인</span></a>') +
           '<button class="icon-btn menu-btn" id="menu-btn" aria-label="전체 메뉴">' + icon('menu') + '</button>';
         $('#menu-btn').onclick = App.openDrawer;
+        var ip = acts.querySelector('[data-install-top]'); if (ip) ip.onclick = App.install;
       }
       App.renderFooter();
       App.renderDrawer();
@@ -235,9 +236,14 @@
       '<div class="drawer-group"><div class="drawer-label">함께하기</div>' +
         APP_NAV.map(function (n) { return '<a href="#' + n[0] + '" data-nav="' + n[0] + '">' + n[1] + '</a>'; }).join('') + '</div>' +
       (App.isAdmin() ? '<div class="drawer-group"><a href="#/admin" class="drawer-admin">' + icon('settings') + ' 관리자 페이지</a></div>' : '') +
-      (App.canInstall() ? '<div class="drawer-group"><button class="drawer-install" data-install>' + icon('install') + ' 홈 화면에 앱 추가</button></div>' : '');
+      '<div class="drawer-group">' +
+        (App.canInstall() ? '<button class="drawer-install" data-install>' + icon('install') + ' 앱 설치 (홈 화면에 추가)</button>' : '') +
+        '<button data-share-app>' + icon('send') + ' 앱 링크 공유하기</button>' +
+        '<a href="#/install">' + icon('phone') + ' 앱 설치 안내</a>' +
+      '</div>';
     d.querySelector('[data-close-drawer]').onclick = function () { document.body.classList.remove('drawer-open'); };
-    var ib = d.querySelector('[data-install]'); if (ib) ib.onclick = App.install;
+    var ib = d.querySelector('[data-install]'); if (ib) ib.onclick = function () { document.body.classList.remove('drawer-open'); App.install(); };
+    var sb = d.querySelector('[data-share-app]'); if (sb) sb.onclick = function () { window.Install && Install.share(); };
     App.setActiveNav(App.currentPath());
   };
   App.openDrawer = function () { document.body.classList.add('drawer-open'); };
@@ -282,21 +288,10 @@
     });
   };
 
-  /* ---------- 설치(PWA) ---------- */
-  App.isStandalone = function () { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; };
-  App.isIOS = function () { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); };
-  App.canInstall = function () { return !App.isStandalone() && (!!App.deferredInstall || App.isIOS()); };
-  App.install = async function () {
-    if (App.deferredInstall) {
-      App.deferredInstall.prompt();
-      try { await App.deferredInstall.userChoice; } catch (e) { }
-      App.deferredInstall = null; App.refreshChrome(); return;
-    }
-    U.modal({
-      title: '홈 화면에 추가',
-      html: '<ol class="install-steps"><li>사파리 아래쪽의 <b>공유</b> 버튼(□↑)을 누르세요.</li><li><b>홈 화면에 추가</b>를 선택하세요.</li><li>오른쪽 위 <b>추가</b>를 누르면 끝!</li></ol><p class="muted small">안드로이드(크롬)는 메뉴(⋮) → <b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 누르세요.</p>'
-    });
-  };
+  /* ---------- 설치(PWA) — 실제 로직은 js/install.js ---------- */
+  App.isStandalone = function () { return window.Install ? Install.standalone() : false; };
+  App.canInstall = function () { return window.Install ? Install.canShow() : false; };
+  App.install = function () { if (!window.Install) return; return Install.deferred ? Install.prompt() : Install.open(); };
 
   /* ---------- 공용 렌더 헬퍼 ---------- */
   App.pageHead = function (title, sub, extra) {
@@ -358,6 +353,7 @@
       $('#app').innerHTML = '<div class="container empty" style="padding-top:30vh"><p>서버에 연결할 수 없어요.</p><p class="muted small">인터넷 연결을 확인한 뒤 다시 열어 주세요.</p><button class="btn btn-primary" onclick="location.reload()">다시 시도</button></div>';
       return;
     }
+    if (window.Install) Install.init();
     App.api = useSB ? window.createSupabaseApi(window.INTO_DEFAULTS, { url: cfg.SUPABASE_URL, anonKey: cfg.SUPABASE_ANON_KEY })
                     : window.createDemoApi(window.INTO_DEFAULTS);
 
@@ -386,8 +382,6 @@
     window.addEventListener('scroll', function () {
       var t = $('#topbar'); if (t) t.classList.toggle('scrolled', window.scrollY > 8);
     }, { passive: true });
-    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); App.deferredInstall = e; if (App.shell === 'public') App.renderDrawer(); });
-    window.addEventListener('appinstalled', function () { App.deferredInstall = null; U.toast('앱이 설치됐어요!'); });
 
     // 서비스워커: https 배포 환경에서 등록 (로컬 개발 중에는 ?sw=1 일 때만 → 캐시 때문에 수정이 안 보이는 일 방지)
     var canSW = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol);
@@ -396,6 +390,7 @@
       navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW 등록 실패', e); });
     }
 
-    App.render();
+    await App.render();
+    if (window.Install) Install.maybeAuto();
   };
 })();
