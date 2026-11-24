@@ -12,7 +12,7 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
   var listeners = [];
 
   function ok(res) { if (res.error) throw res.error; return res.data; }
-  function pick(o, keys) { var r = {}; keys.forEach(function (k) { if (o[k] !== undefined) r[k] = o[k] === '' && /_url$|_date$/.test(k) ? null : o[k]; }); return r; }
+  function pick(o, keys) { var r = {}; keys.forEach(function (k) { if (o[k] !== undefined) r[k] = o[k] === '' && /_url$|_date$|_at$/.test(k) ? null : o[k]; }); return r; }
   function redirectURL() { return location.origin + location.pathname; }
   function thisSunday() { return U.sundayOf(new Date()); }
   function isAdmin() { return !!(state.profile && state.profile.role === 'admin' && state.profile.status === 'active'); }
@@ -46,9 +46,11 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
 
   var FIELDS = {
     notices: ['title', 'body', 'image_url', 'link_url', 'pinned', 'published'],
-    weekly_questions: ['week_of', 'title', 'body', 'scripture', 'image_url', 'published', 'allow_anonymous', 'closed'],
+    weekly_questions: ['week_of', 'title', 'body', 'scripture', 'image_url', 'published', 'allow_anonymous', 'closed',
+      'sermon_title', 'preacher', 'scripture_text', 'questions', 'application', 'prayer', 'attachment_url', 'attachment_name', 'publish_at'],
     inquiries: ['name', 'phone', 'email', 'kind', 'preferred_date', 'message'],
-    photos: ['url', 'thumb_url', 'caption', 'tag', 'sort']
+    photos: ['url', 'thumb_url', 'caption', 'tag', 'sort'],
+    scores: ['title', 'artist', 'song_key', 'memo', 'worship_date', 'sort_order', 'file_path', 'file_name', 'file_size', 'page_count']
   };
 
   async function saveRow(table, o) {
@@ -101,7 +103,7 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
         await api.auth.signOut();
       },
       list: async function () { return ok(await sb.from('profiles').select('*').order('created_at', { ascending: false })); },
-      update: async function (id, o) { return ok(await sb.from('profiles').update(pick(o, ['name', 'phone', 'role', 'status'])).eq('id', id).select().single()); },
+      update: async function (id, o) { return ok(await sb.from('profiles').update(pick(o, ['name', 'phone', 'role', 'status', 'teams'])).eq('id', id).select().single()); },
       remove: async function (id) { ok(await sb.from('profiles').delete().eq('id', id)); }
     },
 
@@ -133,16 +135,17 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
     questions: {
       list: async function (opt) {
         var q = sb.from('weekly_questions').select('*').order('week_of', { ascending: false });
-        if (!(opt && opt.all)) q = q.eq('published', true).lte('week_of', thisSunday());
-        return ok(await q);
+        if (opt && opt.all) return ok(await q);
+        // 공개 시점은 DB 정책(RLS)이 막고, 화면에서도 한 번 더 걸러 줌
+        return ok(await q.eq('published', true)).filter(U.isReleased);
       },
       get: async function (id) {
         var q = ok(await sb.from('weekly_questions').select('*').eq('id', id).maybeSingle());
-        if (!q) throw new Error('질문을 찾을 수 없어요.'); return q;
+        if (!q) throw new Error('나눔지를 찾을 수 없어요. (공개 전이거나 삭제됨)'); return q;
       },
       current: async function () {
-        var rows = ok(await sb.from('weekly_questions').select('*').eq('published', true).lte('week_of', thisSunday()).order('week_of', { ascending: false }).limit(1));
-        return rows[0] || null;
+        var rows = ok(await sb.from('weekly_questions').select('*').eq('published', true).order('week_of', { ascending: false }).limit(4));
+        return rows.filter(U.isReleased)[0] || null;
       },
       save: function (o) { return saveRow('weekly_questions', o); },
       remove: async function (id) { ok(await sb.from('weekly_questions').delete().eq('id', id)); }
@@ -176,7 +179,7 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
       },
       save: async function (o) {
         needMember();
-        var row = { body: o.body, image_url: o.image_url || null, is_anonymous: !!o.is_anonymous };
+        var row = { body: o.body, image_url: o.image_url || null, is_anonymous: !!o.is_anonymous, question_no: o.question_no || null };
         if (o.id) return ok(await sb.from('answers').update(row).eq('id', o.id).select().single());
         row.question_id = o.question_id; row.user_id = state.user.id;
         return ok(await sb.from('answers').insert(row).select().single());
@@ -250,12 +253,50 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
     },
 
     storage: {
+      // PDF 등 일반 파일 (최대 10MB)
+      uploadFile: async function (file, folder) {
+        if (!isAdmin()) throw new Error('파일은 관리자만 올릴 수 있어요.');
+        if (file.size > 10 * 1024 * 1024) throw new Error('10MB 이하 파일만 올릴 수 있어요.');
+        var ext = ((file.name || '').split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 6) || 'bin';
+        var name = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+        var path = isAdmin() ? 'admin/' + (folder || 'files') + '/' + name : 'members/' + state.user.id + '/' + name;
+        ok(await sb.storage.from(BUCKET).upload(path, file, { contentType: file.type || 'application/octet-stream', cacheControl: '31536000', upsert: false }));
+        return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+      },
       upload: async function (blob, folder) {
-        if (!state.user) throw new Error('로그인이 필요해요.');
+        if (!isAdmin()) throw new Error('사진은 관리자만 올릴 수 있어요.');
         var name = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.jpg';
         var path = isAdmin() ? 'admin/' + (folder || 'misc') + '/' + name : 'members/' + state.user.id + '/' + name;
         ok(await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg', cacheControl: '31536000', upsert: false }));
         return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+      }
+    },
+
+    // 찬양팀 악보 (비공개 버킷 'scores')
+    scores: {
+      list: async function () {
+        return ok(await sb.from('scores').select('*').order('worship_date', { ascending: false, nullsFirst: false }).order('sort_order', { ascending: true }).order('title', { ascending: true }));
+      },
+      get: async function (id) {
+        var r = ok(await sb.from('scores').select('*').eq('id', id).maybeSingle());
+        if (!r) throw new Error('악보를 찾을 수 없어요. (찬양팀만 볼 수 있어요)'); return r;
+      },
+      save: function (o) { return saveRow('scores', o); },
+      remove: async function (id) {
+        var r = ok(await sb.from('scores').select('file_path').eq('id', id).maybeSingle());
+        ok(await sb.from('scores').delete().eq('id', id));
+        if (r && r.file_path) await sb.storage.from('scores').remove([r.file_path]);
+      },
+      uploadFile: async function (file) {
+        if (file.size > 30 * 1024 * 1024) throw new Error('30MB 이하 PDF만 올릴 수 있어요.');
+        var d = new Date(), path = d.getFullYear() + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.pdf';
+        ok(await sb.storage.from('scores').upload(path, file, { contentType: 'application/pdf', cacheControl: '3600', upsert: false }));
+        return { path: path, size: file.size, name: file.name };
+      },
+      removeFile: async function (path) { if (path) await sb.storage.from('scores').remove([path]); },
+      fetchFile: async function (row) {
+        var blob = ok(await sb.storage.from('scores').download(row.file_path));
+        return blob.arrayBuffer();
       }
     },
 

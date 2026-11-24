@@ -4,7 +4,7 @@
  *  (Supabase 모드와 동일한 함수 이름/동작을 흉내 냅니다)
  * ===================================================================== */
 window.createDemoApi = function (DEFAULTS) {
-  var KEY = 'into_demo_db_v1';
+  var KEY = 'into_demo_db_v3';
   var SKEY = 'into_demo_session_v1';
   var listeners = [];
 
@@ -22,10 +22,10 @@ window.createDemoApi = function (DEFAULTS) {
     var thisSunday = U.sundayOf(new Date());
     var lastSunday = U.ymd(new Date(U.toDate(thisSunday).getTime() - 7 * 864e5));
     var db = {
-      seq: { profiles: 10, notices: 10, weekly_questions: 10, answers: 10, qna: 10, inquiries: 10, photos: 100 },
+      seq: { profiles: 10, notices: 10, weekly_questions: 10, answers: 10, qna: 10, inquiries: 10, photos: 100, scores: 1 },
       profiles: [
         { id: 'u-admin', email: 'admin@into.demo', pw: hash('into1234'), name: '관리자', phone: '010-0000-0000', role: 'admin', status: 'active', created_at: ago(30) },
-        { id: 'u-member', email: 'member@into.demo', pw: hash('into1234'), name: '김인투', phone: '010-1234-5678', role: 'member', status: 'active', created_at: ago(12) },
+        { id: 'u-member', email: 'member@into.demo', pw: hash('into1234'), name: '김인투', phone: '010-1234-5678', role: 'member', status: 'active', teams: ['worship'], created_at: ago(12) },
         { id: 'u-2', email: 'grace@into.demo', pw: hash('into1234'), name: '이은혜', phone: '', role: 'member', status: 'active', created_at: ago(8) },
         { id: 'u-3', email: 'hope@into.demo', pw: hash('into1234'), name: '박소망', phone: '010-2222-3333', role: 'member', status: 'pending', created_at: ago(1) }
       ],
@@ -35,13 +35,14 @@ window.createDemoApi = function (DEFAULTS) {
         { id: 2, title: '주일 예배 안내', body: '매주 주일 오후 2시 INTO WORSHIP, 오후 3시 INTO TABLE로 모입니다.\n장소: STEADFAST COFFEE & WORKS (성남시 분당구 판교공원로2길 22, 1층)', image_url: 'assets/photos/thumb/gallery-01.jpg', link_url: '', pinned: false, published: true, created_at: ago(5) }
       ],
       weekly_questions: [
-        { id: 1, week_of: lastSunday, title: '지난 한 주, 내 일상 속에서 하나님을 느꼈던 순간은 언제였나요?', body: '거창하지 않아도 괜찮아요. 출근길, 식탁, 대화 속에서 스쳐 간 순간을 나눠 주세요.', scripture: '요한복음 1:14', image_url: '', published: true, allow_anonymous: true, closed: false, created_at: ago(9) },
-        { id: 2, week_of: thisSunday, title: '이번 주, 내가 ‘더 낮은 곳’으로 들어갈 수 있는 자리는 어디일까요?', body: '예수님은 높은 곳에 머물지 않고 가장 낮은 곳으로 들어오셨습니다. 이번 주 내가 먼저 찾아갈 한 사람, 한 자리를 떠올려 보세요.', scripture: '빌립보서 2:6-8', image_url: 'assets/photos/thumb/gallery-06.jpg', published: true, allow_anonymous: true, closed: false, created_at: ago(1) }
+        { id: 1, week_of: lastSunday, title: '말씀이 육신이 되어', sermon_title: '말씀이 육신이 되어', preacher: '김윤호 목사', scripture: '요한복음 1:14', scripture_text: '', body: '하나님은 멀리서 지켜보지 않으시고 우리 동네로 이사 오셨습니다.', questions: ['지난 한 주, 내 일상 속에서 하나님을 느꼈던 순간은 언제였나요?', '내가 "멀리서 지켜보기만" 하고 있는 관계가 있다면 어디일까요?'], application: '', prayer: '서로의 나눔을 듣고 한 사람씩 기도해 주세요.', image_url: '', attachment_url: '', attachment_name: '', publish_at: null, published: true, allow_anonymous: true, closed: false, created_at: ago(9) },
+        { id: 2, week_of: thisSunday, title: '더 낮은 곳으로', sermon_title: '더 낮은 곳으로', preacher: '김윤호 목사', scripture: '빌립보서 2:6-8', scripture_text: '그는 근본 하나님의 본체시나 하나님과 동등됨을 취할 것으로 여기지 아니하시고 오히려 자기를 비워 종의 형체를 가지사 사람들과 같이 되셨고 사람의 모양으로 나타나사 자기를 낮추시고 죽기까지 복종하셨으니 곧 십자가에 죽으심이라 (개역한글)', body: '예수님은 높은 곳에 머물지 않고 가장 낮은 곳으로 들어오셨습니다. 복음은 언제나 아래로 흐릅니다.', questions: ['오늘 말씀에서 마음에 남은 한 구절은 무엇인가요? 왜 그 말씀이 남았나요?', '이번 주, 내가 "더 낮은 곳"으로 들어갈 수 있는 자리는 어디일까요?', '이번 한 주 실천할 한 가지를 나눠 주세요.'], application: '이번 주 내가 먼저 찾아갈 한 사람: ', prayer: '오른쪽에 앉은 사람을 위해 한 문장씩 기도해 주세요.', image_url: 'assets/photos/thumb/gallery-06.jpg', attachment_url: '', attachment_name: '', publish_at: null, published: true, allow_anonymous: true, closed: false, created_at: ago(1) },
+        { id: 3, week_of: U.ymd(new Date(U.toDate(thisSunday).getTime() + 7 * 864e5)), title: '(예약) 다음 주 나눔지', sermon_title: '(예약) 다음 주 나눔지', preacher: '김윤호 목사', scripture: '', scripture_text: '', body: '', questions: [], application: '', prayer: '', image_url: '', attachment_url: '', attachment_name: '', publish_at: new Date(U.toDate(thisSunday).getTime() + 7 * 864e5 + 14 * 36e5).toISOString(), published: true, allow_anonymous: true, closed: false, created_at: ago(0, 1) }
       ],
       answers: [
         { id: 1, question_id: 1, user_id: 'u-2', author_name: '이은혜', body: '야근하고 들어오는 길에 동료가 건넨 따뜻한 커피 한 잔이요. 작은 친절 속에서 위로를 느꼈어요.', image_url: '', is_anonymous: false, created_at: ago(6) },
         { id: 2, question_id: 1, user_id: 'u-member', author_name: '익명', body: '아이를 재우고 혼자 식탁에 앉아 있던 밤, 오랜만에 기도가 나왔습니다.', image_url: '', is_anonymous: true, created_at: ago(5) },
-        { id: 3, question_id: 2, user_id: 'u-2', author_name: '이은혜', body: '회사에서 늘 혼자 점심 먹는 신입 동료에게 이번 주에는 먼저 말을 걸어 보려고 해요.', image_url: '', is_anonymous: false, created_at: ago(0, 5) }
+        { id: 3, question_id: 2, question_no: 2, user_id: 'u-2', author_name: '이은혜', body: '회사에서 늘 혼자 점심 먹는 신입 동료에게 이번 주에는 먼저 말을 걸어 보려고 해요.', image_url: '', is_anonymous: false, created_at: ago(0, 5) }
       ],
       answer_likes: [{ answer_id: 1, user_id: 'u-member' }, { answer_id: 1, user_id: 'u-admin' }, { answer_id: 3, user_id: 'u-admin' }],
       qna: [
@@ -51,6 +52,8 @@ window.createDemoApi = function (DEFAULTS) {
       inquiries: [
         { id: 1, name: '홍길동', phone: '010-5555-6666', email: '', kind: '예배 참석', preferred_date: thisSunday, message: '판교에서 일하는 직장인인데 주일 예배에 참석해 보고 싶어요.', status: 'new', admin_memo: '', created_at: ago(0, 3) }
       ],
+      scores: [],
+      score_files: {},
       photos: DEFAULTS.photos.map(function (p, i) { var o = clone(p); o.id = i + 1; o.created_at = ago(20); return o; })
     };
     db.seq.photos = db.photos.length + 1;
@@ -80,6 +83,7 @@ window.createDemoApi = function (DEFAULTS) {
   }
   function isAdmin() { var p = me(); return !!(p && p.role === 'admin' && p.status === 'active'); }
   function isMember() { var p = me(); return !!(p && p.status === 'active'); }
+  function inTeam(t) { var p = me(); return !!(p && p.status === 'active' && (p.role === 'admin' || (p.teams || []).indexOf(t) >= 0)); }
   function needAdmin() { if (!isAdmin()) throw new Error('관리자만 할 수 있어요.'); }
   function needMember() {
     var p = me();
@@ -147,7 +151,7 @@ window.createDemoApi = function (DEFAULTS) {
       list: async function () { needAdmin(); return load().profiles.map(publicProfile).sort(byDesc('created_at')); },
       update: async function (id, o) {
         needAdmin(); var p = find('profiles', id); if (!p) throw new Error('회원을 찾을 수 없어요.');
-        ['name', 'phone', 'role', 'status'].forEach(function (k) { if (o[k] !== undefined) p[k] = o[k]; });
+        ['name', 'phone', 'role', 'status', 'teams'].forEach(function (k) { if (o[k] !== undefined) p[k] = o[k]; });
         persist(); emit(); return publicProfile(p);
       },
       remove: async function (id) {
@@ -186,10 +190,10 @@ window.createDemoApi = function (DEFAULTS) {
 
     questions: {
       list: async function (opt) {
-        var all = opt && opt.all && isAdmin(), sun = thisSunday();
-        return clone(load().weekly_questions.filter(function (q) { return all || (q.published && q.week_of <= sun); }).sort(byDesc('week_of')));
+        var all = opt && opt.all && isAdmin();
+        return clone(load().weekly_questions.filter(function (q) { return all || U.isReleased(q); }).sort(byDesc('week_of')));
       },
-      get: async function (id) { var q = find('weekly_questions', id); if (!q || (!q.published && !isAdmin())) throw new Error('질문을 찾을 수 없어요.'); return clone(q); },
+      get: async function (id) { var q = find('weekly_questions', id); if (!q || (!U.isReleased(q) && !isAdmin())) throw new Error('나눔지를 찾을 수 없어요. (공개 전이거나 삭제됨)'); return clone(q); },
       current: async function () {
         var list = await api.questions.list();
         return list[0] || null;
@@ -197,7 +201,7 @@ window.createDemoApi = function (DEFAULTS) {
       save: async function (o) {
         needAdmin(); var d = load(), q;
         if (o.id) { q = find('weekly_questions', o.id); Object.assign(q, o, { updated_at: now() }); }
-        else { q = Object.assign({ published: true, allow_anonymous: true, closed: false, body: '', scripture: '', image_url: '' }, o, { id: nextId('weekly_questions'), created_at: now() }); d.weekly_questions.push(q); }
+        else { q = Object.assign({ published: true, allow_anonymous: true, closed: false, body: '', scripture: '', image_url: '', questions: [] }, o, { id: nextId('weekly_questions'), created_at: now() }); d.weekly_questions.push(q); }
         persist(); return clone(q);
       },
       remove: async function (id) {
@@ -236,15 +240,15 @@ window.createDemoApi = function (DEFAULTS) {
       save: async function (o) {
         var p = needMember(), d = load(), a;
         var q = find('weekly_questions', o.question_id);
-        if (!q || !q.published) throw new Error('질문을 찾을 수 없어요.');
+        if (!q || !U.isReleased(q)) throw new Error('아직 공개되지 않은 나눔지예요.');
         if (o.is_anonymous && !q.allow_anonymous) o.is_anonymous = false;
         if (o.id) {
           a = find('answers', o.id);
           if (!a || (a.user_id !== p.id && !isAdmin())) throw new Error('수정 권한이 없어요.');
-          a.body = o.body; a.image_url = o.image_url || ''; a.is_anonymous = !!o.is_anonymous; a.updated_at = now();
+          a.body = o.body; a.image_url = o.image_url || ''; a.is_anonymous = !!o.is_anonymous; a.question_no = o.question_no || null; a.updated_at = now();
         } else {
           if (q.closed) throw new Error('나눔이 마감된 질문이에요.');
-          a = { id: nextId('answers'), question_id: q.id, user_id: p.id, body: o.body, image_url: o.image_url || '', is_anonymous: !!o.is_anonymous, created_at: now() };
+          a = { id: nextId('answers'), question_id: q.id, question_no: o.question_no || null, user_id: p.id, body: o.body, image_url: o.image_url || '', is_anonymous: !!o.is_anonymous, created_at: now() };
           d.answers.push(a);
         }
         var au = find('profiles', a.user_id);
@@ -335,10 +339,56 @@ window.createDemoApi = function (DEFAULTS) {
     },
 
     storage: {
+      uploadFile: async function (file) {
+        needAdmin();
+        if (file.size > 2.5 * 1024 * 1024) throw new Error('데모 모드에서는 2.5MB 이하 파일만 올릴 수 있어요. (실제 운영에서는 10MB까지)');
+        return U.blobToDataURL(file);
+      },
       // 데모: 이미지를 작게 줄여 dataURL 로 저장
       upload: async function (blob) {
+        needAdmin();
         var small = blob.size > 350000 ? await U.resizeImage(new File([blob], 'x.jpg', { type: 'image/jpeg' }), 1000, 0.72) : blob;
         return U.blobToDataURL(small);
+      }
+    },
+
+    scores: {
+      list: async function () {
+        if (!inTeam('worship')) return [];
+        return clone((load().scores || []).slice().sort(function (a, b) {
+          var da = a.worship_date || '', db2 = b.worship_date || '';
+          if (da !== db2) return !da ? 1 : !db2 ? -1 : (da < db2 ? 1 : -1);
+          return (a.sort_order || 0) - (b.sort_order || 0) || (a.title < b.title ? -1 : 1);
+        }));
+      },
+      get: async function (id) { if (!inTeam('worship')) throw new Error('찬양팀만 볼 수 있어요.'); var r = find('scores', id); if (!r) throw new Error('악보를 찾을 수 없어요.'); return clone(r); },
+      save: async function (o) {
+        needAdmin(); var d = load(); d.scores = d.scores || []; var r;
+        if (o.id) { r = find('scores', o.id); Object.assign(r, o, { updated_at: now() }); }
+        else { r = Object.assign({ sort_order: 0 }, o, { id: nextId('scores'), created_at: now() }); d.scores.push(r); }
+        persist(); return clone(r);
+      },
+      remove: async function (id) {
+        needAdmin(); var d = load(), r = find('scores', id);
+        d.scores = d.scores.filter(function (x) { return String(x.id) !== String(id); });
+        if (r && d.score_files) delete d.score_files[r.file_path];
+        persist();
+      },
+      uploadFile: async function (file) {
+        needAdmin();
+        if (file.size > 2.5 * 1024 * 1024) throw new Error('데모 모드에서는 2.5MB 이하 PDF만 올릴 수 있어요. (실제 운영에서는 30MB까지)');
+        var d = load(); d.score_files = d.score_files || {};
+        var path = 'demo/' + U.uid() + '.pdf';
+        d.score_files[path] = await U.blobToDataURL(file); persist();
+        return { path: path, size: file.size, name: file.name };
+      },
+      removeFile: async function (path) { var d = load(); if (d.score_files) { delete d.score_files[path]; persist(); } },
+      fetchFile: async function (row) {
+        if (!inTeam('worship')) throw new Error('찬양팀만 볼 수 있어요.');
+        var url = (load().score_files || {})[row.file_path]; if (!url) throw new Error('파일을 찾을 수 없어요.');
+        var b64 = url.split(',')[1], bin = atob(b64), buf = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        return buf.buffer;
       }
     },
 

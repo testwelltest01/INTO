@@ -46,8 +46,15 @@
     return q;
   };
 
+  // 화면을 떠날 때 정리할 일 (예: 악보 뷰어의 화면 켜 두기 해제)
+  App._leave = [];
+  App.onLeave = function (fn) { App._leave.push(fn); };
+
   App.render = async function () {
     var myId = ++App.renderId;
+    var leaving = App._leave; App._leave = [];
+    leaving.forEach(function (fn) { try { fn(); } catch (e) { } });
+    document.body.classList.remove('viewer-mode');
     var path = App.currentPath();
     var match = null, params = {};
     for (var i = 0; i < App.routes.length; i++) {
@@ -82,7 +89,7 @@
     ['/', '홈'], ['/about', '우리는 인투처치입니다'], ['/worship', '주일 예배 안내'],
     ['/community', '예배와 공동체'], ['/foundation', 'FOUNDATION']
   ];
-  var APP_NAV = [['/news', '교회 소식'], ['/q', '이번 주 질문'], ['/q/board', '질문 게시판'], ['/gallery', '갤러리'], ['/contact', '예배 문의']];
+  var APP_NAV = [['/news', '교회 소식'], ['/q', '이번 주 나눔'], ['/q/board', '질문 게시판'], ['/gallery', '갤러리'], ['/contact', '예배 문의']];
 
   App.brandHTML = function () {
     return '<a href="#/" class="brand" aria-label="INTO CHURCH 홈">' +
@@ -112,7 +119,7 @@
         '<main id="view" class="view"></main>' +
         '<footer id="footer" class="footer"></footer>' +
         '<nav class="tabbar" id="tabbar" aria-label="하단 메뉴">' +
-          App.tab('/', 'home', '홈') + App.tab('/news', 'news', '소식') + App.tab('/q', 'question', '질문') +
+          App.tab('/', 'home', '홈') + App.tab('/news', 'news', '소식') + App.tab('/q', 'question', '나눔') +
           App.tab('/gallery', 'image', '갤러리') + App.tab('/me', 'user', 'MY') +
         '</nav>' +
         '<div class="drawer" id="drawer" aria-hidden="true"></div>' +
@@ -153,7 +160,8 @@
   App.adminNavHTML = function () {
     var items = [
       ['/admin', 'chart', '대시보드'],
-      ['/admin/questions', 'question', '이번 주 질문'],
+      ['/admin/questions', 'book', '나눔지'],
+      ['/admin/scores', 'music', '찬양팀 악보'],
       ['/admin/qna', 'mail', '질문 게시판'],
       ['/admin/notices', 'news', '교회 소식'],
       ['/admin/gallery', 'image', '갤러리'],
@@ -235,6 +243,7 @@
         PUBLIC_NAV.map(function (n) { return '<a href="#' + n[0] + '" data-nav="' + n[0] + '">' + n[1] + '</a>'; }).join('') + '</div>' +
       '<div class="drawer-group"><div class="drawer-label">함께하기</div>' +
         APP_NAV.map(function (n) { return '<a href="#' + n[0] + '" data-nav="' + n[0] + '">' + n[1] + '</a>'; }).join('') + '</div>' +
+      (App.inTeam && App.inTeam('worship') ? '<div class="drawer-group"><div class="drawer-label">찬양팀</div><a href="#/scores" data-nav="/scores">' + icon('music') + ' 찬양팀 악보</a></div>' : '') +
       (App.isAdmin() ? '<div class="drawer-group"><a href="#/admin" class="drawer-admin">' + icon('settings') + ' 관리자 페이지</a></div>' : '') +
       '<div class="drawer-group">' +
         (App.canInstall() ? '<button class="drawer-install" data-install>' + icon('install') + ' 앱 설치 (홈 화면에 추가)</button>' : '') +
@@ -267,6 +276,7 @@
       var b = e.target.closest('[data-logout]'); if (!b) return;
       e.preventDefault();
       await App.api.auth.signOut();
+      if (window.Scores) Scores.clearCache();
       App.session = null; U.toast('로그아웃했어요.');
       App.go('/');
     });
@@ -307,6 +317,25 @@
   };
 
   // 이미지 선택 → 리사이즈 → 업로드 → URL
+  // 나눔지 원본 파일(PDF·이미지) 첨부 → { url, name }
+  App.pickFile = function (opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = opts.accept || '.pdf,application/pdf,image/*';
+      inp.onchange = async function () {
+        var f = inp.files && inp.files[0]; if (!f) return resolve(null);
+        try {
+          var url;
+          if (/^image\//.test(f.type)) url = await App.api.storage.upload(await U.resizeImage(f, 2000, 0.85), opts.folder);
+          else url = await App.api.storage.uploadFile(f, opts.folder);
+          resolve({ url: url, name: f.name });
+        } catch (e) { U.toast(U.errMsg(e), 'error'); resolve(null); }
+      };
+      inp.click();
+    });
+  };
+
   App.pickAndUpload = function (opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
@@ -344,8 +373,26 @@
     });
   }
 
+  // 앱 화면 확대 고정: 두 손가락 확대·두 번 탭 확대·입력칸 자동 확대 방지
+  App.lockZoom = function () {
+    var mobile = (window.Install && Install.env.mobile) || ('ontouchstart' in window);
+    if (!mobile) return; // PC 브라우저의 Ctrl+휠 확대는 그대로 둠 (접근성)
+    document.documentElement.classList.add('no-zoom');
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) {
+      document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false });
+    });
+    document.addEventListener('touchmove', function (e) { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    var last = 0;
+    document.addEventListener('touchend', function (e) {
+      var now = Date.now();
+      if (now - last < 300 && !e.target.closest('input, textarea, select, [contenteditable]')) e.preventDefault();
+      last = now;
+    }, { passive: false });
+  };
+
   App.start = async function () {
     var cfg = window.INTO_CONFIG || {};
+    App.lockZoom();
     var wantSB = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY);
     if (wantSB && !window.supabase) await loadScript(cfg.SUPABASE_SDK || 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2');
     var useSB = wantSB && window.supabase;

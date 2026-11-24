@@ -105,6 +105,23 @@ window.INTO_DEFAULTS = (function () {
       instagram: ''
     },
 
+    // 나눔지 기본 서식 (관리자 > 나눔지 > 기본 서식 에서 수정)
+    sheet_template: {
+      preacher: '김윤호 목사',
+      release: 'sunday',          // week: 그 주 월요일부터 / sunday: 주일 예배 시간부터 / custom: 직접 지정
+      release_time: '14:00',
+      summary: '',
+      summary_hint: '설교의 핵심 메시지를 3~4문장으로 정리해 주세요.',
+      questions: [
+        '오늘 말씀에서 마음에 남은 한 구절(또는 한 문장)은 무엇인가요? 왜 그 말씀이 남았나요?',
+        '이 말씀에 비추어 볼 때, 지난 한 주 나의 일상은 어땠나요?',
+        '이번 한 주, 말씀대로 살아 보기 위해 내가 실천할 한 가지는 무엇인가요?'
+      ],
+      application: '',
+      prayer: '서로의 나눔을 듣고, 오른쪽에 앉은 사람을 위해 한 문장씩 기도해 주세요.',
+      allow_anonymous: true
+    },
+
     settings: {
       require_approval: false,
       inquiry_kinds: ['예배 참석', '새가족 등록', 'INTO TABLE 참여', '기타 문의']

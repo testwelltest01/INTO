@@ -1,5 +1,5 @@
 /* =====================================================================
- * 회원 화면: 로그인·회원가입·MY · 이번 주 질문(나눔) · 질문 게시판
+ * 회원 화면: 로그인·회원가입·MY · 이번 주 나눔지 · 질문 게시판
  * ===================================================================== */
 (function () {
   var esc = U.esc, icon = U.icon, text = U.text;
@@ -56,7 +56,7 @@
     ctx.el.innerHTML =
       '<section class="container narrow auth">' +
         '<div class="auth-mark">' + U.markSVG() + '</div>' +
-        '<h1>회원가입</h1><p class="muted">가입하면 이번 주 질문에 나눔을 남기고 질문 게시판을 이용할 수 있어요.' + (needApproval ? '<br><b>가입 후 관리자 승인이 필요해요.</b>' : '') + '</p>' +
+        '<h1>회원가입</h1><p class="muted">가입하면 이번 주 나눔지에 나눔을 남기고 질문 게시판을 이용할 수 있어요.' + (needApproval ? '<br><b>가입 후 관리자 승인이 필요해요.</b>' : '') + '</p>' +
         '<form class="card form" id="signup-form" novalidate>' +
           '<label class="field"><span>이름 <em>*</em></span><input name="name" required maxlength="30" autocomplete="name" placeholder="실명을 적어 주세요"></label>' +
           '<label class="field"><span>이메일 <em>*</em></span><input name="email" type="email" required autocomplete="email" inputmode="email"></label>' +
@@ -141,12 +141,13 @@
           '<button class="btn btn-sm btn-ghost" data-edit>' + icon('edit') + '수정</button>' +
         '</div>' +
         (p.status === 'pending' ? App.pendingNotice() : '') +
+        (App.inTeam('worship') ? '<a class="admin-entry team" href="#/scores">' + icon('music') + '<div><b>찬양팀 악보</b><span>콘티별 악보를 페이지별로 크게 보기</span></div>' + icon('chevron-right') + '</a>' : '') +
         (App.isAdmin() ? '<a class="admin-entry" href="#/admin">' + icon('settings') + '<div><b>관리자 페이지</b><span>질문·소식·회원·문의 관리 (PC 화면 권장)</span></div>' + icon('chevron-right') + '</a>' : '') +
 
         '<h2 class="sub-title">내 나눔 <span class="muted">' + answers.length + '</span></h2>' +
         (answers.length ? '<div class="list-card">' + answers.slice(0, 10).map(function (a) {
-          return '<a class="list-row" href="#/q/week/' + a.question_id + '"><span class="lr-icon">' + icon('question') + '</span><span class="lr-body"><span class="lr-title">' + esc(a.question_title || '질문') + '</span><span class="lr-sub">' + esc(a.body.slice(0, 60)) + (a.is_anonymous ? ' · 익명' : '') + '</span></span>' + icon('chevron-right', 'lr-arrow') + '</a>';
-        }).join('') + '</div>' : '<div class="empty sm">아직 남긴 나눔이 없어요. <a href="#/q">이번 주 질문 보러 가기</a></div>') +
+          return '<a class="list-row" href="#/q/week/' + a.question_id + '"><span class="lr-icon">' + icon('question') + '</span><span class="lr-body"><span class="lr-title">' + esc(a.question_title || '나눔지') + '</span><span class="lr-sub">' + esc(a.body.slice(0, 60)) + (a.is_anonymous ? ' · 익명' : '') + '</span></span>' + icon('chevron-right', 'lr-arrow') + '</a>';
+        }).join('') + '</div>' : '<div class="empty sm">아직 남긴 나눔이 없어요. <a href="#/q">이번 주 나눔지 보러 가기</a></div>') +
 
         '<h2 class="sub-title">내 질문 <span class="muted">' + qnas.length + '</span></h2>' +
         (qnas.length ? '<div class="list-card">' + qnas.slice(0, 10).map(qnaRow).join('') + '</div>' : '<div class="empty sm">올린 질문이 없어요. <a href="#/q/board/new">질문하기</a></div>') +
@@ -193,33 +194,35 @@
     };
     ctx.el.querySelector('[data-withdraw]').onclick = async function () {
       if (!(await U.confirm('정말 탈퇴할까요?\n작성한 나눔·질문은 "탈퇴한 회원"으로 남거나 관리자가 정리합니다.', '탈퇴하기', true))) return;
-      try { await App.api.profiles.withdraw(); App.session = null; U.toast('탈퇴 처리됐어요. 함께해 주셔서 감사했어요.'); App.go('/'); }
+      try { await App.api.profiles.withdraw(); if (window.Scores) Scores.clearCache(); App.session = null; U.toast('탈퇴 처리됐어요. 함께해 주셔서 감사했어요.'); App.go('/'); }
       catch (err) { U.toast(U.errMsg(err), 'error'); }
     };
     var ib = ctx.el.querySelector('[data-install]'); if (ib) ib.onclick = App.install;
     ctx.el.querySelector('[data-share-app]').onclick = function () { window.Install && Install.share(); };
   }, { title: 'MY', auth: true });
 
-  /* ================= 질문 (이번 주 질문 + 질문 게시판) ================= */
+  /* ================= 나눔 (이번 주 나눔지 + 질문 게시판) ================= */
   function qTabs(active) {
-    return '<div class="seg-tabs container"><a href="#/q" class="' + (active === 'week' ? 'on' : '') + '">이번 주 질문</a><a href="#/q/board" class="' + (active === 'board' ? 'on' : '') + '">질문 게시판</a></div>';
+    return '<div class="seg-tabs container"><a href="#/q" class="' + (active === 'week' ? 'on' : '') + '">이번 주 나눔지</a><a href="#/q/board" class="' + (active === 'board' ? 'on' : '') + '">질문 게시판</a></div>';
   }
 
   App.route('/q', async function (ctx) {
     var list = await App.api.questions.list();
     if (!ctx.alive()) return;
     if (!list.length) {
-      ctx.el.innerHTML = App.pageHead('질문', '') + qTabs('week') + '<section class="container"><div class="empty">아직 등록된 질문이 없어요.<br><span class="muted small">매주 목사님이 나눔 질문을 올려 주실 거예요.</span></div></section>';
+      ctx.el.innerHTML = App.pageHead('나눔', '') + qTabs('week') + '<section class="container"><div class="empty">아직 공개된 나눔지가 없어요.<br><span class="muted small">매주 목사님이 나눔지를 올려 주실 거예요.</span></div></section>';
       return;
     }
     await renderWeek(ctx, list[0], list);
-  }, { title: '이번 주 질문' });
+  }, { title: '이번 주 나눔' });
 
   App.route('/q/week/:id', async function (ctx) {
     var r = await Promise.all([App.api.questions.get(ctx.params.id), App.api.questions.list()]);
     if (!ctx.alive()) return;
     await renderWeek(ctx, r[0], r[1]);
-  }, { title: '이번 주 질문' });
+  }, { title: '이번 주 나눔' });
+
+  function sec(title, html, cls) { return '<section class="sheet-sec' + (cls ? ' ' + cls : '') + '"><h3>' + title + '</h3>' + html + '</section>'; }
 
   async function renderWeek(ctx, q, all) {
     var answers = await App.api.answers.listByQuestion(q.id);
@@ -227,6 +230,10 @@
     var isCurrent = all[0] && all[0].id === q.id;
     var past = all.filter(function (x) { return x.id !== q.id; });
     var p = App.profile();
+    var qs = (q.questions || []).filter(function (x) { return x && String(x).trim(); });
+    var counts = {};
+    (answers || []).forEach(function (a) { var k = a.question_no || 0; counts[k] = (counts[k] || 0) + 1; });
+    var filterNo = 'all';
 
     var answerArea;
     if (!App.isLoggedIn()) answerArea = App.needLogin('나눔은 로그인한 성도만 보고 남길 수 있어요.');
@@ -234,40 +241,80 @@
     else if (answers === null) answerArea = App.needLogin('이용이 제한된 계정이에요.');
     else {
       answerArea =
-        (q.closed ? '<div class="card notice-card">' + icon('lock') + '<div><b>나눔이 마감된 질문이에요</b></div></div>' :
+        (q.closed ? '<div class="card notice-card">' + icon('lock') + '<div><b>나눔이 마감된 나눔지예요</b></div></div>' :
         '<form class="card answer-form" id="ans-form">' +
-          '<textarea name="body" rows="4" maxlength="3000" placeholder="이 질문에 대한 나의 생각과 삶을 나눠 주세요."></textarea>' +
+          (qs.length ? '<select name="question_no" class="af-select" aria-label="나눔할 질문"><option value="">전체 나눔 (자유롭게)</option>' +
+            qs.map(function (t, i) { return '<option value="' + (i + 1) + '">Q' + (i + 1) + '. ' + esc(String(t).slice(0, 36)) + (String(t).length > 36 ? '…' : '') + '</option>'; }).join('') + '</select>' : '') +
+          '<textarea name="body" rows="4" maxlength="3000" placeholder="' + (qs.length ? '질문을 고르고, 나의 생각과 삶을 나눠 주세요.' : '이 나눔지에 대한 나의 생각과 삶을 나눠 주세요.') + '"></textarea>' +
           '<div class="af-preview" id="af-preview"></div>' +
           '<div class="af-bar">' +
-            '<button type="button" class="icon-btn" data-photo aria-label="사진 첨부">' + icon('camera') + '</button>' +
+            (App.isAdmin() ? '<button type="button" class="icon-btn" data-photo aria-label="사진 첨부">' + icon('camera') + '</button>' : '') +
             (q.allow_anonymous ? '<label class="check inline"><input type="checkbox" name="is_anonymous"><span>익명으로</span></label>' : '') +
             '<button class="btn btn-primary btn-sm" type="submit">' + icon('send') + '나눔 올리기</button>' +
           '</div>' +
         '</form>') +
-        '<div class="answers-head"><h3>나눔 <span class="muted">' + answers.length + '</span></h3></div>' +
-        (answers.length ? '<div class="answers">' + answers.map(answerCard).join('') + '</div>' : '<div class="empty sm">첫 나눔을 남겨 주세요 🙂</div>');
+        '<div class="answers-head"><h3>나눔 <span class="muted">' + answers.length + '</span></h3>' +
+          (qs.length && answers.length ? '<div class="chips" id="ans-filter"><button class="chip-btn on" data-fno="all">전체</button>' +
+            qs.map(function (t, i) { return counts[i + 1] ? '<button class="chip-btn" data-fno="' + (i + 1) + '">Q' + (i + 1) + ' <small>' + counts[i + 1] + '</small></button>' : ''; }).join('') + '</div>' : '') +
+        '</div>' +
+        (answers.length ? '<div class="answers" id="answers">' + answers.map(answerCard).join('') + '</div>' : '<div class="empty sm">첫 나눔을 남겨 주세요 🙂</div>');
     }
 
-    ctx.el.innerHTML = App.pageHead('질문', '') + qTabs('week') +
+    var meta = [esc(U.weekLabel(q.week_of)), q.preacher ? esc(q.preacher) : ''].filter(Boolean).join(' · ');
+    ctx.el.innerHTML = App.pageHead('나눔', '') + qTabs('week') +
       '<section class="container narrow">' +
-        '<article class="wq-detail">' +
-          '<div class="wq-label">' + (isCurrent ? '<span class="chip chip-dark">이번 주</span>' : '') + esc(U.weekLabel(q.week_of)) + '</div>' +
-          '<h2 class="wq-q">' + esc(q.title) + '</h2>' +
-          (q.scripture ? '<div class="wq-verse">' + icon('book') + esc(q.scripture) + '</div>' : '') +
-          (q.body ? '<p class="wq-body">' + text(q.body) + '</p>' : '') +
+        '<article class="sheet" id="sheet">' +
+          '<header class="wq-detail sheet-head">' +
+            '<div class="wq-label">' + (isCurrent ? '<span class="chip chip-dark">이번 주</span>' : '') + meta + '</div>' +
+            '<h2 class="wq-q">' + esc(q.title) + '</h2>' +
+            (q.scripture ? '<div class="wq-verse">' + icon('book') + esc(q.scripture) + '</div>' : '') +
+          '</header>' +
+          (q.scripture_text ? '<blockquote class="sheet-verse">' + text(q.scripture_text) + (q.scripture ? '<cite>' + esc(q.scripture) + '</cite>' : '') + '</blockquote>' : '') +
+          (q.body ? sec('말씀 요약', '<p>' + text(q.body) + '</p>') : '') +
+          (qs.length ? sec('나눔 질문', '<ol class="sheet-qs">' + qs.map(function (t, i) {
+            return '<li><span class="qn">' + (i + 1) + '</span><div><p>' + text(t) + '</p>' +
+              (answers && !q.closed ? '<button class="q-answer" data-answer-q="' + (i + 1) + '">' + icon('edit') + '이 질문에 나누기' + (counts[i + 1] ? ' · 나눔 ' + counts[i + 1] : '') + '</button>' : (counts[i + 1] ? '<span class="muted small">나눔 ' + counts[i + 1] + '</span>' : '')) +
+              '</div></li>';
+          }).join('') + '</ol>') : '') +
+          (q.application ? sec('적용 · 결단', '<p>' + text(q.application) + '</p>', 'sheet-apply') : '') +
+          (q.prayer ? sec('함께 기도', '<p>' + text(q.prayer) + '</p>') : '') +
           (q.image_url ? '<img class="wq-img" src="' + esc(q.image_url) + '" alt="" loading="lazy">' : '') +
+          (q.attachment_url ? '<a class="sheet-file" href="' + esc(q.attachment_url) + '" target="_blank" rel="noopener"' + (/^data:/.test(q.attachment_url) ? ' download="' + esc(q.attachment_name || '나눔지') + '"' : '') + '>' + icon('download') + '<span><b>나눔지 원본</b><small>' + esc(q.attachment_name || '파일 열기') + '</small></span></a>' : '') +
+          '<div class="sheet-tools"><button class="btn btn-sm btn-ghost" data-print>' + icon('download') + '인쇄 · PDF 저장</button><button class="btn btn-sm btn-ghost" data-share-sheet>' + icon('send') + '공유</button></div>' +
         '</article>' +
         answerArea +
-        (past.length ? '<h3 class="sub-title">지난 질문</h3><div class="list-card">' + past.map(function (x) {
-          return '<a class="list-row" href="#/q/week/' + x.id + '"><span class="lr-date">' + esc(U.fmtDate(x.week_of).slice(5)) + '</span><span class="lr-body"><span class="lr-title">' + esc(x.title) + '</span></span>' + icon('chevron-right', 'lr-arrow') + '</a>';
+        (past.length ? '<h3 class="sub-title">지난 나눔지</h3><div class="list-card">' + past.map(function (x) {
+          return '<a class="list-row" href="#/q/week/' + x.id + '"><span class="lr-date">' + esc(U.fmtDate(x.week_of).slice(5)) + '</span><span class="lr-body"><span class="lr-title">' + esc(x.title) + '</span>' + (x.scripture ? '<span class="lr-sub">' + esc(x.scripture) + '</span>' : '') + '</span>' + icon('chevron-right', 'lr-arrow') + '</a>';
         }).join('') + '</div>' : '') +
       '</section>';
 
     var img = ctx.el.querySelector('.wq-img'); if (img) img.onclick = function () { U.lightbox([q.image_url], 0); };
+    ctx.el.querySelector('[data-print]').onclick = function () { window.print(); };
+    ctx.el.querySelector('[data-share-sheet]').onclick = function () {
+      var url = (window.Install ? Install.appURL() : location.origin + location.pathname) + '#/q/week/' + q.id;
+      var data = { title: '인투처치 나눔지 · ' + q.title, text: U.weekLabel(q.week_of) + ' 나눔지', url: url };
+      if (navigator.share) navigator.share(data).catch(function () { }); else Install.copy(url, '나눔지 링크를 복사했어요.');
+    };
     var f = ctx.el.querySelector('#ans-form');
+    U.$$('[data-answer-q]', ctx.el).forEach(function (b) {
+      b.onclick = function () {
+        if (!f) return;
+        if (f.question_no) f.question_no.value = b.dataset.answerQ;
+        f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(function () { f.body.focus(); }, 350);
+      };
+    });
+    var fl = ctx.el.querySelector('#ans-filter');
+    if (fl) U.$$('[data-fno]', fl).forEach(function (b) {
+      b.onclick = function () {
+        filterNo = b.dataset.fno;
+        U.$$('[data-fno]', fl).forEach(function (x) { x.classList.toggle('on', x === b); });
+        U.$$('#answers .answer', ctx.el).forEach(function (el) { el.style.display = (filterNo === 'all' || el.dataset.qno === filterNo) ? '' : 'none'; });
+      };
+    });
     if (f) {
       var photo = null;
-      f.querySelector('[data-photo]').onclick = async function () {
+      if (f.querySelector('[data-photo]')) f.querySelector('[data-photo]').onclick = async function () {
         var r = await App.pickAndUpload({ folder: 'answers', max: 1400 });
         if (!r) return; photo = r.url;
         ctx.el.querySelector('#af-preview').innerHTML = '<div class="thumb-x"><img src="' + esc(photo) + '"><button type="button" aria-label="사진 빼기">' + icon('close') + '</button></div>';
@@ -278,7 +325,7 @@
         var body = f.body.value.trim(); if (!body) return U.toast('내용을 입력해 주세요.', 'error');
         var btn = f.querySelector('[type=submit]'); U.busy(btn, true);
         try {
-          await App.api.answers.save({ question_id: q.id, body: body, image_url: photo, is_anonymous: f.is_anonymous ? f.is_anonymous.checked : false });
+          await App.api.answers.save({ question_id: q.id, question_no: f.question_no && f.question_no.value ? +f.question_no.value : null, body: body, image_url: photo, is_anonymous: f.is_anonymous ? f.is_anonymous.checked : false });
           U.toast('나눔을 올렸어요. 고마워요!');
           App.render();
         } catch (err) { U.toast(U.errMsg(err), 'error'); U.busy(btn, false); }
@@ -289,10 +336,11 @@
 
   function answerCard(a) {
     var who = a.is_anonymous ? '익명' : a.author_name;
-    return '<div class="answer" data-aid="' + a.id + '">' +
+    return '<div class="answer" data-aid="' + a.id + '" data-qno="' + (a.question_no || '') + '">' +
       '<div class="a-head"><span class="a-avatar' + (a.is_anonymous ? ' anon' : '') + '">' + esc(a.is_anonymous ? '?' : (who || '?').slice(0, 1)) + '</span>' +
         '<span class="a-who">' + esc(who) + (a.real_name && a.is_anonymous ? ' <small class="muted">(' + esc(a.real_name) + ')</small>' : '') + (a.mine ? ' <small class="chip">나</small>' : '') + '</span>' +
         '<span class="a-time">' + U.fmtRel(a.created_at) + (a.updated_at && a.updated_at !== a.created_at ? ' · 수정됨' : '') + '</span></div>' +
+      (a.question_no ? '<div class="a-q">Q' + a.question_no + '</div>' : '') +
       '<div class="a-body">' + text(a.body) + '</div>' +
       (a.image_url ? '<img class="a-img" src="' + U.attr(a.image_url) + '" alt="" loading="lazy">' : '') +
       '<div class="a-foot">' +
@@ -332,7 +380,7 @@
             f.onsubmit = async function (e) {
               e.preventDefault();
               try {
-                await App.api.answers.save({ id: a.id, question_id: q.id, body: f.body.value.trim(), is_anonymous: f.anon ? f.anon.checked : false, image_url: f.keepimg && f.keepimg.checked ? a.image_url : null });
+                await App.api.answers.save({ id: a.id, question_id: q.id, question_no: a.question_no, body: f.body.value.trim(), is_anonymous: f.anon ? f.anon.checked : false, image_url: f.keepimg && f.keepimg.checked ? a.image_url : null });
                 close(); U.toast('수정했어요.'); App.render();
               } catch (err) { U.toast(U.errMsg(err), 'error'); }
             };
@@ -353,7 +401,7 @@
   App.route('/q/board', async function (ctx) {
     var list = await App.api.qna.list();
     if (!ctx.alive()) return;
-    var head = App.pageHead('질문', '') + qTabs('board');
+    var head = App.pageHead('나눔', '') + qTabs('board');
     if (list === null) {
       ctx.el.innerHTML = head + '<section class="container narrow"><div class="board-intro"><h2>궁금한 것을 물어보세요</h2><p class="muted">신앙, 말씀, 교회 생활에 대한 질문을 남기면 목사님이 답해 드려요. 비공개로도 올릴 수 있어요.</p></div>' + App.needLogin('질문 게시판은 로그인한 성도만 이용할 수 있어요.') + '</section>';
       return;
@@ -375,7 +423,7 @@
         '<label class="field"><span>제목</span><input name="title" required maxlength="100" value="' + esc(q.title || '') + '"></label>' +
         '<label class="field"><span>내용</span><textarea name="body" rows="8" required maxlength="5000">' + esc(q.body || '') + '</textarea></label>' +
         '<div class="af-preview" id="qf-preview"></div>' +
-        '<div class="row-between"><button type="button" class="btn btn-ghost btn-sm" data-photo>' + icon('camera') + '사진 첨부</button>' +
+        '<div class="row-between">' + (App.isAdmin() ? '<button type="button" class="btn btn-ghost btn-sm" data-photo>' + icon('camera') + '사진 첨부</button>' : '<span></span>') +
         '<label class="check inline"><input type="checkbox" name="is_private"' + (q.is_private ? ' checked' : '') + '><span>' + icon('lock') + '비공개 (목사님만 보기)</span></label></div>' +
         '<div class="row-gap end"><a class="btn btn-ghost" href="#/q/board' + (q.id ? '/' + q.id : '') + '">취소</a><button class="btn btn-primary" type="submit">' + (q.id ? '저장' : '올리기') + '</button></div>' +
       '</form></section>';
@@ -385,7 +433,7 @@
       if (photo) pv.querySelector('button').onclick = function () { photo = null; drawPhoto(); };
     }
     drawPhoto();
-    f.querySelector('[data-photo]').onclick = async function () { var r = await App.pickAndUpload({ folder: 'qna', max: 1400 }); if (r) { photo = r.url; drawPhoto(); } };
+    if (f.querySelector('[data-photo]')) f.querySelector('[data-photo]').onclick = async function () { var r = await App.pickAndUpload({ folder: 'qna', max: 1400 }); if (r) { photo = r.url; drawPhoto(); } };
     f.onsubmit = async function (e) {
       e.preventDefault();
       var d = U.formData(f);

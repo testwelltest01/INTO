@@ -33,11 +33,13 @@
 
       '<section class="container home-cards">' +
         (cur ? '<a class="wq-card" href="#/q/week/' + cur.id + '">' +
-            '<div class="wq-label">' + icon('question') + '이번 주 질문 <span>· ' + esc(U.weekLabel(cur.week_of)) + '</span></div>' +
+            '<div class="wq-label">' + icon('book') + '이번 주 나눔 <span>· ' + esc(U.weekLabel(cur.week_of)) + '</span></div>' +
             '<div class="wq-title">' + esc(cur.title) + '</div>' +
-            (cur.scripture ? '<div class="wq-verse">' + esc(cur.scripture) + '</div>' : '') +
+            (cur.scripture ? '<div class="wq-verse">' + esc(cur.scripture) + (cur.preacher ? ' · ' + esc(cur.preacher) : '') + '</div>' : '') +
+            (cur.questions && cur.questions.length ? '<div class="wq-first">Q1. ' + esc(cur.questions[0]) + '</div>' : '') +
             '<div class="wq-cta">나눔 남기기 ' + icon('chevron-right') + '</div></a>'
-          : '<a class="wq-card wq-empty" href="#/q"><div class="wq-label">' + icon('question') + '이번 주 질문</div><div class="wq-title">곧 이번 주 질문이 올라와요</div><div class="wq-cta">지난 질문 보기 ' + icon('chevron-right') + '</div></a>') +
+          : '<a class="wq-card wq-empty" href="#/q"><div class="wq-label">' + icon('book') + '이번 주 나눔</div><div class="wq-title">곧 이번 주 나눔지가 올라와요</div><div class="wq-cta">지난 나눔 보기 ' + icon('chevron-right') + '</div></a>') +
+        (App.inTeam && App.inTeam('worship') ? '<a class="team-mini" href="#/scores">' + icon('music') + '<span><b>찬양팀 악보</b><small>이번 주 콘티 보기</small></span>' + icon('chevron-right') + '</a>' : '') +
         '<a class="worship-mini" href="#/worship">' +
           '<div class="wm-head">' + icon('calendar') + '주일 예배</div>' +
           w.times.map(function (t) { return '<div class="wm-row"><b>' + esc(t.time) + '</b><span>' + esc(t.name) + '</span></div>'; }).join('') +
@@ -78,7 +80,7 @@
       (photos.length ? '<section class="container home-gallery"><div class="section-row"><h2 class="section-title sm">갤러리</h2><a href="#/gallery" class="more">더 보기 ' + icon('chevron-right') + '</a></div>' +
         '<div class="photo-grid">' + photos.map(function (p, i) { return '<button class="ph" data-ph="' + i + '"><img src="' + esc(p.thumb_url || p.url) + '" alt="' + esc(p.caption || '') + '" loading="lazy"></button>'; }).join('') + '</div></section>' : '') +
 
-      (App.canInstall() ? '<section class="container"><button class="install-card" data-install>' + U.markSVG() + '<div><b>홈 화면에 인투처치 앱 추가하기</b><span>앱처럼 바로 열고, 이번 주 질문을 놓치지 마세요</span></div>' + icon('chevron-right') + '</button></section>'
+      (App.canInstall() ? '<section class="container"><button class="install-card" data-install>' + U.markSVG() + '<div><b>홈 화면에 인투처치 앱 추가하기</b><span>앱처럼 바로 열고, 이번 주 나눔을 놓치지 마세요</span></div>' + icon('chevron-right') + '</button></section>'
         : (window.Install && !Install.env.mobile && !Install.standalone() ? '<section class="container"><div class="install-card pc"><div class="is-qr" data-home-qr></div><div><b>휴대폰에 인투처치 앱 설치하기</b><span>휴대폰 카메라로 QR 코드를 찍으면 설치 안내가 열려요</span><a class="more" href="#/install">설치 안내 보기 ' + icon('chevron-right') + '</a></div></div></section>' : ''));
 
     // 슬라이드

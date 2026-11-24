@@ -1,6 +1,6 @@
 /* =====================================================================
  * 관리자 화면 (PC 최적화 + 모바일 대응)
- *  대시보드 · 이번 주 질문 · 질문 게시판 · 소식 · 갤러리 · 예배 문의 · 회원 · 사이트 콘텐츠 · 설정
+ *  대시보드 · 나눔지 · 질문 게시판 · 소식 · 갤러리 · 예배 문의 · 회원 · 사이트 콘텐츠 · 설정
  * ===================================================================== */
 (function () {
   var esc = U.esc, icon = U.icon, text = U.text;
@@ -36,10 +36,10 @@
         return '<a class="stat" href="' + c[3] + '"><span class="stat-ic">' + icon(c[0]) + '</span><span class="stat-label">' + c[1] + '</span><b class="stat-num">' + (c[2] || 0) + '</b></a>';
       }).join('') + '</div>' +
       '<div class="dash-grid">' +
-        panel('이번 주 질문', s.currentQuestion
+        panel('이번 주 나눔지', s.currentQuestion
           ? '<div class="dash-q"><div class="muted small">' + esc(U.weekLabel(s.currentQuestion.week_of)) + '</div><div class="dash-q-title">' + esc(s.currentQuestion.title) + '</div><div class="muted small">나눔 ' + s.currentAnswers + '개</div></div>'
-          : '<div class="empty sm">이번 주 질문이 아직 없어요.</div>',
-          '<a class="btn btn-sm btn-primary" href="#/admin/questions/new">' + icon('plus') + '새 질문</a>') +
+          : '<div class="empty sm">공개 중인 나눔지가 아직 없어요.</div>',
+          '<a class="btn btn-sm btn-primary" href="#/admin/questions/new">' + icon('plus') + '새 나눔지</a>') +
         panel('빠른 작업', '<div class="quick">' +
           '<a href="#/admin/notices/new">' + icon('news') + '소식 쓰기</a>' +
           '<a href="#/admin/gallery">' + icon('image') + '사진 올리기</a>' +
@@ -59,91 +59,215 @@
   function bindRowLinks(el) { U.$$('[data-go]', el).forEach(function (tr) { tr.onclick = function (e) { if (e.target.closest('button, a, select, input')) return; App.go(tr.dataset.go); }; }); }
   function inqStatus(s) { return { new: '<span class="chip chip-warn">새 문의</span>', contacted: '<span class="chip">연락함</span>', done: '<span class="chip chip-ok">완료</span>' }[s] || esc(s); }
 
-  /* ---------------- 이번 주 질문 ---------------- */
+  /* ---------------- 나눔지 (매주 미리 올리고 예약 공개) ---------------- */
+  function tplOf() { return Object.assign({}, window.INTO_DEFAULTS.content.sheet_template, App.content.sheet_template || {}); }
+  function releaseLabel(q) {
+    if (!q.published) return '<span class="chip">비공개</span>';
+    var at = U.releaseAt(q), now = Date.now();
+    if (at && at.getTime() > now) return '<span class="chip chip-warn">예약 · ' + esc(U.fmtWhen(at)) + ' 공개</span>';
+    return q.week_of === U.sundayOf(new Date()) ? '<span class="chip chip-dark">이번 주 · 공개 중</span>' : '<span class="chip chip-ok">공개</span>';
+  }
+  function sundayAt(weekOf, hhmm) {
+    var d = U.toDate(weekOf), t = (hhmm || '14:00').split(':');
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), +t[0] || 0, +t[1] || 0).toISOString();
+  }
+  function releaseModeOf(q) {
+    if (!q.publish_at) return { mode: 'week', time: tplOf().release_time || '14:00' };
+    var d = new Date(q.publish_at);
+    if (U.ymd(d) === q.week_of) return { mode: 'sunday', time: U.pad(d.getHours()) + ':' + U.pad(d.getMinutes()) };
+    return { mode: 'custom', time: tplOf().release_time || '14:00' };
+  }
+
   App.route('/admin/questions', async function (ctx) {
     var r = await Promise.all([App.api.questions.list({ all: true }), App.api.answers.counts()]);
     if (!ctx.alive()) return;
-    var list = r[0], counts = r[1], sun = U.sundayOf(new Date());
-    ctx.el.innerHTML = toolbar('<p class="muted">매주 성도들이 나눔을 남길 질문을 올려요. 미리 여러 주를 예약해 둘 수도 있어요.</p>', '<a class="btn btn-primary" href="#/admin/questions/new">' + icon('plus') + '새 질문</a>') +
-      panel('질문 목록', table(['주일', '질문', '상태', '나눔', ''], list.map(function (q) {
-        var st = !q.published ? '<span class="chip">비공개</span>' : q.week_of > sun ? '<span class="chip chip-warn">예약</span>' : q.week_of === sun ? '<span class="chip chip-dark">이번 주</span>' : '<span class="chip chip-ok">공개</span>';
-        if (q.closed) st += ' <span class="chip">마감</span>';
-        return { attrs: 'class="click" data-go="/admin/questions/' + q.id + '"', cells: ['<span class="nw">' + U.fmtDate(q.week_of) + '</span>', '<b>' + esc(q.title) + '</b>' + (q.scripture ? '<div class="muted small">' + esc(q.scripture) + '</div>' : ''), st, (counts[q.id] || 0) + '개', '<a class="btn btn-sm btn-ghost" href="#/admin/questions/' + q.id + '">열기</a>'] };
-      }), { empty: '아직 질문이 없어요. 첫 질문을 등록해 보세요.' }));
+    var list = r[0], counts = r[1];
+    ctx.el.innerHTML = toolbar('<p class="muted">나눔지를 미리 여러 주 올려 두면, 정한 시간에 자동으로 성도들에게 공개돼요.</p>',
+      '<a class="btn btn-ghost" href="#/admin/sheet-template">' + icon('settings') + '기본 서식</a><a class="btn btn-primary" href="#/admin/questions/new">' + icon('plus') + '새 나눔지</a>') +
+      panel('나눔지 목록', table(['주일', '나눔지', '공개', '나눔', ''], list.map(function (q) {
+        var st = releaseLabel(q) + (q.closed ? ' <span class="chip">마감</span>' : '');
+        return { attrs: 'class="click" data-go="/admin/questions/' + q.id + '"', cells: ['<span class="nw">' + U.fmtDate(q.week_of) + '</span>', '<b>' + esc(q.title) + '</b>' + '<div class="muted small">' + [q.scripture, (q.questions || []).length ? '질문 ' + q.questions.length + '개' : '', q.attachment_url ? '원본 첨부' : ''].filter(Boolean).map(esc).join(' · ') + '</div>', st, (counts[q.id] || 0) + '개', '<a class="btn btn-sm btn-ghost" href="#/admin/questions/' + q.id + '">열기</a>'] };
+      }), { empty: '아직 나눔지가 없어요. [새 나눔지]를 누르면 기본 서식이 채워진 채로 시작해요.' }));
     bindRowLinks(ctx.el);
-  }, Object.assign({ title: '이번 주 질문' }, A));
+  }, Object.assign({ title: '나눔지' }, A));
 
-  async function questionEditor(ctx, q) {
-    var isNew = !q;
-    if (isNew) {
-      var all = await App.api.questions.list({ all: true });
-      var sun = U.sundayOf(new Date());
-      var taken = all.map(function (x) { return x.week_of; });
+  // mode: 'new' | 'edit' | 'template'
+  async function sheetEditor(ctx, q, mode) {
+    var tpl = tplOf();
+    var all = mode === 'template' ? [] : await App.api.questions.list({ all: true });
+    if (mode === 'new') {
+      var sun = U.sundayOf(new Date()), taken = all.map(function (x) { return x.week_of; });
       while (taken.indexOf(sun) >= 0) sun = U.ymd(new Date(U.toDate(sun).getTime() + 7 * 864e5));
-      q = { week_of: sun, title: '', body: '', scripture: '', image_url: '', published: true, allow_anonymous: true, closed: false };
+      q = { week_of: sun, title: '', sermon_title: '', preacher: tpl.preacher || '', scripture: '', scripture_text: '', body: tpl.summary || '',
+        questions: (tpl.questions || []).slice(), application: tpl.application || '', prayer: tpl.prayer || '', image_url: '', attachment_url: '', attachment_name: '',
+        published: true, allow_anonymous: tpl.allow_anonymous !== false, closed: false,
+        publish_at: tpl.release === 'week' ? null : sundayAt(sun, tpl.release_time) };
     }
-    var answers = isNew ? [] : (await App.api.answers.listByQuestion(q.id)) || [];
+    if (mode === 'template') q = { preacher: tpl.preacher, body: tpl.summary, questions: (tpl.questions || []).slice(), application: tpl.application, prayer: tpl.prayer, allow_anonymous: tpl.allow_anonymous !== false };
+    var d = JSON.parse(JSON.stringify(q));
+    d.questions = (d.questions || []).slice();
+    var rel = mode === 'template' ? { mode: tpl.release || 'sunday', time: tpl.release_time || '14:00' } : releaseModeOf(d);
+    var answers = mode === 'edit' ? (await App.api.answers.listByQuestion(d.id)) || [] : [];
     if (!ctx.alive()) return;
-    var img = q.image_url || '';
-    ctx.el.innerHTML =
-      '<a class="back" href="#/admin/questions">' + icon('chevron-left') + '질문 목록</a>' +
-      '<div class="two-col">' +
-        panel(isNew ? '새 질문 등록' : '질문 수정',
-          '<form class="form" id="qe">' +
-            '<label class="field"><span>주일 날짜</span><input type="date" name="week_of" value="' + esc(q.week_of) + '" required><small class="muted">해당 주일이 되면 앱의 "이번 주 질문"에 나타나요.</small></label>' +
-            '<label class="field"><span>질문 <em>*</em></span><textarea name="title" rows="2" required maxlength="200" placeholder="예) 이번 주, 내가 먼저 찾아갈 한 사람은 누구인가요?">' + esc(q.title) + '</textarea></label>' +
-            '<label class="field"><span>본문 말씀</span><input name="scripture" maxlength="80" value="' + esc(q.scripture || '') + '" placeholder="예) 빌립보서 2:6-8"></label>' +
-            '<label class="field"><span>설명 / 묵상 안내</span><textarea name="body" rows="5" maxlength="3000">' + esc(q.body || '') + '</textarea></label>' +
-            '<div class="field"><span>이미지</span><div class="img-field" id="qe-img"></div></div>' +
-            '<div class="toggles">' +
-              '<label class="switch"><input type="checkbox" name="published"' + (q.published ? ' checked' : '') + '><i></i><span>공개</span></label>' +
-              '<label class="switch"><input type="checkbox" name="allow_anonymous"' + (q.allow_anonymous ? ' checked' : '') + '><i></i><span>익명 나눔 허용</span></label>' +
-              '<label class="switch"><input type="checkbox" name="closed"' + (q.closed ? ' checked' : '') + '><i></i><span>나눔 마감</span></label>' +
-            '</div>' +
-            '<div class="row-gap end">' + (isNew ? '' : '<button type="button" class="btn btn-ghost danger-text" data-del>' + icon('trash') + '삭제</button><a class="btn btn-ghost" href="#/q/week/' + q.id + '" target="_blank">앱에서 보기</a>') +
-            '<button class="btn btn-primary" type="submit">' + (isNew ? '등록' : '저장') + '</button></div>' +
-          '</form>') +
-        (isNew ? panel('작성 팁', '<ul class="tips"><li>한 문장으로 짧고 구체적인 질문이 나눔이 잘 돼요.</li><li>미리 다음 주 질문을 등록해 두면 날짜에 맞춰 자동으로 바뀌어요.</li><li>"익명 나눔 허용"을 켜면 성도가 이름 대신 "익명"으로 올릴 수 있어요. (관리자는 실명 확인 가능)</li></ul>')
-          : panel('나눔 ' + answers.length + '개', answers.length ? '<div class="answers admin-answers">' + answers.map(function (a) {
-              return '<div class="answer"><div class="a-head"><span class="a-who">' + esc(a.is_anonymous ? '익명' : a.author_name) + (a.is_anonymous ? ' <small class="muted">(' + esc(a.real_name || '') + ')</small>' : '') + '</span><span class="a-time">' + U.fmtDate(a.created_at, true) + ' · ♥ ' + (a.like_count || 0) + '</span></div><div class="a-body">' + text(a.body) + '</div>' + (a.image_url ? '<img class="a-img" src="' + U.attr(a.image_url) + '" alt="">' : '') + '<div class="a-foot"><span class="a-tools"><button data-adel="' + a.id + '">삭제</button></span></div></div>';
-            }).join('') + '</div>' : '<div class="empty sm">아직 나눔이 없어요.</div>', answers.length ? '<button class="btn btn-sm btn-ghost" data-csv>' + icon('download') + 'CSV</button>' : '')) +
-      '</div>';
+    var isTpl = mode === 'template';
 
-    function drawImg() { imageField(ctx.el.querySelector('#qe-img'), img, function (v) { img = v; drawImg(); }, 'questions'); }
-    drawImg();
-    var f = ctx.el.querySelector('#qe');
-    f.onsubmit = guard(async function (e) {
-      e.preventDefault();
-      var d = U.formData(f);
-      if (!d.title) return U.toast('질문을 입력해 주세요.', 'error');
-      var saved = await App.api.questions.save({ id: q.id, week_of: d.week_of, title: d.title, scripture: d.scripture, body: d.body, image_url: img, published: d.published, allow_anonymous: d.allow_anonymous, closed: d.closed });
-      U.toast('저장했어요.');
-      App.go('/admin/questions/' + saved.id, true);
-    });
-    var del = ctx.el.querySelector('[data-del]');
-    if (del) del.onclick = guard(async function () {
-      if (!(await U.confirm('이 질문과 모든 나눔(' + answers.length + '개)을 삭제할까요?', '삭제', true))) return;
-      await App.api.questions.remove(q.id); U.toast('삭제했어요.'); App.go('/admin/questions', true);
-    });
-    U.$$('[data-adel]', ctx.el).forEach(function (b) {
-      b.onclick = guard(async function () {
-        if (!(await U.confirm('이 나눔을 삭제할까요?', '삭제', true))) return;
-        await App.api.answers.remove(+b.dataset.adel); U.toast('삭제했어요.'); App.render();
+    function collect() {
+      var f = ctx.el.querySelector('#qe'); if (!f) return;
+      U.$$('[data-f]', f).forEach(function (el) { d[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value; });
+      d.questions = U.$$('[data-qi]', f).map(function (el) { return el.value; });
+      var r = f.querySelector('input[name=release]:checked'); if (r) rel.mode = r.value;
+      var t = f.querySelector('[name=release_time]'); if (t) rel.time = t.value || '14:00';
+      var c = f.querySelector('[name=release_custom]'); if (c) rel.custom = c.value;
+    }
+    function qRows() {
+      return d.questions.map(function (t, i) {
+        return '<div class="qrow"><span class="qn">' + (i + 1) + '</span><textarea rows="2" data-qi="' + i + '" placeholder="나눔 질문을 입력하세요">' + esc(t) + '</textarea>' +
+          '<div class="li-tools"><button type="button" class="icon-btn" data-qmv="' + i + '|-1"' + (i === 0 ? ' disabled' : '') + ' aria-label="위로">' + icon('chevron-left', 'rot90') + '</button>' +
+          '<button type="button" class="icon-btn" data-qmv="' + i + '|1"' + (i === d.questions.length - 1 ? ' disabled' : '') + ' aria-label="아래로">' + icon('chevron-right', 'rot90') + '</button>' +
+          '<button type="button" class="icon-btn danger-text" data-qrm="' + i + '" aria-label="삭제">' + icon('trash') + '</button></div></div>';
+      }).join('');
+    }
+    function releaseHTML() {
+      var customVal = rel.custom || (d.publish_at ? U.toLocalInput(d.publish_at) : (d.week_of ? d.week_of + 'T' + rel.time : ''));
+      return '<div class="field"><span>성도에게 공개되는 시점</span><div class="release">' +
+        '<label><input type="radio" name="release" value="week"' + (rel.mode === 'week' ? ' checked' : '') + '><span>' + (isTpl ? '그 주 월요일부터' : '그 주 월요일 0시부터 <small>(' + esc(U.fmtWhen(U.releaseAt({ week_of: d.week_of }))) + ')</small>') + '</span></label>' +
+        '<label><input type="radio" name="release" value="sunday"' + (rel.mode === 'sunday' ? ' checked' : '') + '><span>주일 <input type="time" name="release_time" value="' + esc(rel.time) + '"> 부터 <small>(예배 시간에 맞춰 공개)</small></span></label>' +
+        (isTpl ? '' : '<label><input type="radio" name="release" value="custom"' + (rel.mode === 'custom' ? ' checked' : '') + '><span>직접 지정 <input type="datetime-local" name="release_custom" value="' + esc(customVal) + '"></span></label>') +
+        '</div></div>';
+    }
+    function draw() {
+      var main =
+        '<form class="form" id="qe">' +
+          (isTpl ? '<div class="callout small">[새 나눔지]를 누를 때 이 내용이 자동으로 채워져요. 매주 바뀌는 날짜·제목·본문은 나눔지마다 입력해요.</div>' :
+            '<div class="tpl-bar"><button type="button" class="btn btn-sm btn-ghost" data-load-tpl>' + icon('refresh') + '기본 서식 불러오기</button>' +
+            (all.filter(function (x) { return x.id !== d.id; }).length ? '<button type="button" class="btn btn-sm btn-ghost" data-copy-last>' + icon('book') + '지난 나눔지 복사</button>' : '') +
+            '<button type="button" class="btn btn-sm btn-ghost" data-save-tpl>' + icon('check') + '이 내용을 기본 서식으로</button></div>' +
+            '<div class="grid2"><label class="field"><span>주일 날짜</span><input type="date" data-f="week_of" value="' + esc(d.week_of) + '" required></label>' +
+            '<label class="field"><span>설교자</span><input data-f="preacher" value="' + esc(d.preacher || '') + '" placeholder="김윤호 목사"></label></div>') +
+          (isTpl ? '<label class="field"><span>설교자 (기본값)</span><input data-f="preacher" value="' + esc(d.preacher || '') + '"></label>' : '') +
+          releaseHTML() +
+          (isTpl ? '' :
+            '<label class="field"><span>제목 (설교 제목) <em>*</em></span><input data-f="title" value="' + esc(d.title || '') + '" maxlength="120" required placeholder="예) 더 낮은 곳으로"></label>' +
+            '<div class="grid2"><label class="field"><span>본문 말씀</span><input data-f="scripture" value="' + esc(d.scripture || '') + '" maxlength="80" placeholder="예) 빌립보서 2:6-8"></label><span></span></div>' +
+            '<label class="field"><span>본문 내용 <small class="muted">(성경 구절을 붙여 넣으세요)</small></span><textarea rows="4" data-f="scripture_text">' + esc(d.scripture_text || '') + '</textarea></label>') +
+          '<label class="field"><span>말씀 요약' + (isTpl ? ' (기본 문구, 보통 비워 둠)' : '') + '</span><textarea rows="4" data-f="body" placeholder="' + esc(tpl.summary_hint || '') + '">' + esc(d.body || '') + '</textarea></label>' +
+          '<div class="field"><span>나눔 질문</span><div id="qrows">' + qRows() + '</div><button type="button" class="btn btn-sm btn-ghost" data-qadd>' + icon('plus') + '질문 추가</button></div>' +
+          '<label class="field"><span>적용 · 결단</span><textarea rows="2" data-f="application">' + esc(d.application || '') + '</textarea></label>' +
+          '<label class="field"><span>함께 기도</span><textarea rows="2" data-f="prayer">' + esc(d.prayer || '') + '</textarea></label>' +
+          (isTpl ? '' :
+            '<div class="grid2"><div class="field"><span>대표 이미지</span><div class="img-field" id="qe-img"></div></div>' +
+            '<div class="field"><span>나눔지 원본 파일 <small class="muted">(PDF·이미지)</small></span><div class="file-field" id="qe-file"></div></div></div>') +
+          '<div class="toggles">' +
+            (isTpl ? '' : '<label class="switch"><input type="checkbox" data-f="published"' + (d.published ? ' checked' : '') + '><i></i><span>공개</span></label>') +
+            '<label class="switch"><input type="checkbox" data-f="allow_anonymous"' + (d.allow_anonymous ? ' checked' : '') + '><i></i><span>익명 나눔 허용</span></label>' +
+            (isTpl ? '' : '<label class="switch"><input type="checkbox" data-f="closed"' + (d.closed ? ' checked' : '') + '><i></i><span>나눔 마감</span></label>') +
+          '</div>' +
+          '<div class="row-gap end">' +
+            (isTpl ? '<button type="button" class="btn btn-ghost" data-tpl-reset>처음 기본값으로</button>' :
+              (mode === 'edit' ? '<button type="button" class="btn btn-ghost danger-text" data-del>' + icon('trash') + '삭제</button><a class="btn btn-ghost" href="#/q/week/' + d.id + '" target="_blank">' + icon('external') + '앱에서 보기</a>' : '')) +
+            '<button class="btn btn-primary" type="submit">' + (isTpl ? '기본 서식 저장' : mode === 'new' ? '나눔지 등록' : '저장') + '</button>' +
+          '</div>' +
+        '</form>';
+      var side = isTpl ? panel('기본 서식이란?', '<ul class="tips"><li>새 나눔지를 만들 때 질문·적용·기도 문구가 자동으로 채워져요.</li><li>나눔지 편집 화면의 <b>"이 내용을 기본 서식으로"</b>로도 저장할 수 있어요.</li><li>공개 시점 기본값도 여기서 정해요. (예: 주일 오후 2시 예배 시간)</li></ul>')
+        : mode === 'new' ? panel('미리 올리기 안내', '<ul class="tips"><li>다음 주, 다다음 주 나눔지도 미리 등록해 두면 <b>정한 시간에 자동 공개</b>돼요.</li><li>공개 전에는 성도에게 보이지 않고, 관리자 목록에 "예약"으로 표시돼요.</li><li>주보용 나눔지 PDF가 있으면 <b>원본 파일</b>로 첨부해 두세요. 성도가 받아 볼 수 있어요.</li></ul>')
+        : panel('나눔 ' + answers.length + '개', answers.length ? '<div class="answers admin-answers">' + answers.map(function (a) {
+            return '<div class="answer"><div class="a-head"><span class="a-who">' + esc(a.is_anonymous ? '익명' : a.author_name) + (a.is_anonymous ? ' <small class="muted">(' + esc(a.real_name || '') + ')</small>' : '') + '</span><span class="a-time">' + U.fmtDate(a.created_at, true) + ' · ♥ ' + (a.like_count || 0) + '</span></div>' + (a.question_no ? '<div class="a-q">Q' + a.question_no + '</div>' : '') + '<div class="a-body">' + text(a.body) + '</div>' + (a.image_url ? '<img class="a-img" src="' + U.attr(a.image_url) + '" alt="">' : '') + '<div class="a-foot"><span class="a-tools"><button data-adel="' + a.id + '">삭제</button></span></div></div>';
+          }).join('') + '</div>' : '<div class="empty sm">아직 나눔이 없어요.</div>', answers.length ? '<button class="btn btn-sm btn-ghost" data-csv>' + icon('download') + 'CSV</button>' : '');
+      ctx.el.innerHTML = '<a class="back" href="#/admin/questions">' + icon('chevron-left') + '나눔지 목록</a>' +
+        '<div class="two-col">' + panel(isTpl ? '나눔지 기본 서식' : mode === 'new' ? '새 나눔지' : '나눔지 수정', main) + side + '</div>';
+      bind();
+    }
+    function fileField() {
+      var el = ctx.el.querySelector('#qe-file'); if (!el) return;
+      el.innerHTML = d.attachment_url
+        ? '<a class="sheet-file small" href="' + esc(d.attachment_url) + '" target="_blank" rel="noopener">' + icon('download') + '<span><b>' + esc(d.attachment_name || '첨부 파일') + '</b><small>열어 보기</small></span></a><div class="img-btns"><button type="button" class="btn btn-sm btn-ghost" data-file-up>변경</button><button type="button" class="btn btn-sm btn-ghost danger-text" data-file-rm>빼기</button></div>'
+        : '<div class="img-btns"><button type="button" class="btn btn-sm btn-ghost" data-file-up>' + icon('plus') + '파일 첨부</button></div>';
+      el.querySelector('[data-file-up]').onclick = async function () { var b = this; U.busy(b, true); var r = await App.pickFile({ folder: 'sheets' }); U.busy(b, false); if (r) { d.attachment_url = r.url; d.attachment_name = r.name; fileField(); } };
+      var rm = el.querySelector('[data-file-rm]'); if (rm) rm.onclick = function () { d.attachment_url = ''; d.attachment_name = ''; fileField(); };
+    }
+    function bind() {
+      var f = ctx.el.querySelector('#qe');
+      var imgEl = ctx.el.querySelector('#qe-img');
+      if (imgEl) (function drawImg() { imageField(imgEl, d.image_url || '', function (v) { d.image_url = v; drawImg(); }, 'questions'); })();
+      fileField();
+      f.querySelector('[data-qadd]').onclick = function () { collect(); d.questions.push(''); draw(); var t = U.$$('[data-qi]', ctx.el).pop(); if (t) t.focus(); };
+      U.$$('[data-qrm]', f).forEach(function (b) { b.onclick = function () { collect(); d.questions.splice(+b.dataset.qrm, 1); draw(); }; });
+      U.$$('[data-qmv]', f).forEach(function (b) { b.onclick = function () { collect(); var p = b.dataset.qmv.split('|'), i = +p[0], j = i + (+p[1]); var t = d.questions[i]; d.questions[i] = d.questions[j]; d.questions[j] = t; draw(); }; });
+      var x;
+      if ((x = f.querySelector('[data-load-tpl]'))) x.onclick = async function () {
+        if (!(await U.confirm('질문·요약·적용·기도를 기본 서식으로 바꿀까요?\n(날짜·제목·본문은 그대로 둡니다)'))) return;
+        collect(); var t = tplOf();
+        d.questions = (t.questions || []).slice(); d.body = t.summary || ''; d.application = t.application || ''; d.prayer = t.prayer || ''; d.preacher = d.preacher || t.preacher || '';
+        rel.mode = t.release || rel.mode; rel.time = t.release_time || rel.time; draw();
+      };
+      if ((x = f.querySelector('[data-copy-last]'))) x.onclick = async function () {
+        var prev = all.filter(function (y) { return y.id !== d.id; })[0]; if (!prev) return;
+        if (!(await U.confirm('"' + prev.title + '" (' + U.fmtDate(prev.week_of) + ')의 질문·적용·기도를 가져올까요?'))) return;
+        collect(); d.questions = (prev.questions || []).slice(); d.application = prev.application || ''; d.prayer = prev.prayer || ''; d.preacher = d.preacher || prev.preacher || ''; draw();
+      };
+      if ((x = f.querySelector('[data-save-tpl]'))) x.onclick = guard(async function () {
+        collect();
+        if (!(await U.confirm('지금 질문·적용·기도·공개 시점을 앞으로 쓸 기본 서식으로 저장할까요?'))) return;
+        await saveTemplate({ preacher: d.preacher, summary: '', questions: d.questions.filter(function (t) { return t.trim(); }), application: d.application, prayer: d.prayer, allow_anonymous: !!d.allow_anonymous, release: rel.mode === 'custom' ? 'sunday' : rel.mode, release_time: rel.time });
+        U.toast('기본 서식으로 저장했어요.');
       });
-    });
-    U.$$('.a-img', ctx.el).forEach(function (im) { im.onclick = function () { U.lightbox([im.src], 0); }; });
-    var csv = ctx.el.querySelector('[data-csv]');
-    if (csv) csv.onclick = function () {
-      U.downloadCSV('나눔_' + q.week_of + '.csv', ['작성일시', '표시이름', '실명', '익명', '공감', '내용'],
-        answers.map(function (a) { return [U.fmtDate(a.created_at, true), a.is_anonymous ? '익명' : a.author_name, a.real_name || a.author_name, a.is_anonymous ? 'Y' : '', a.like_count || 0, a.body]; }));
-    };
+      if ((x = f.querySelector('[data-tpl-reset]'))) x.onclick = async function () {
+        if (!(await U.confirm('기본 서식을 처음 기본값으로 되돌릴까요? (저장을 눌러야 반영)'))) return;
+        var t = window.INTO_DEFAULTS.content.sheet_template;
+        d = { preacher: t.preacher, body: t.summary, questions: t.questions.slice(), application: t.application, prayer: t.prayer, allow_anonymous: t.allow_anonymous };
+        rel = { mode: t.release, time: t.release_time }; draw();
+      };
+      if ((x = f.querySelector('[data-del]'))) x.onclick = guard(async function () {
+        if (!(await U.confirm('이 나눔지와 모든 나눔(' + answers.length + '개)을 삭제할까요?', '삭제', true))) return;
+        await App.api.questions.remove(d.id); U.toast('삭제했어요.'); App.go('/admin/questions', true);
+      });
+      f.onsubmit = guard(async function (e) {
+        e.preventDefault(); collect();
+        var qsClean = d.questions.map(function (t) { return t.trim(); }).filter(Boolean);
+        if (isTpl) {
+          await saveTemplate({ preacher: d.preacher, summary: d.body, questions: qsClean, application: d.application, prayer: d.prayer, allow_anonymous: !!d.allow_anonymous, release: rel.mode, release_time: rel.time });
+          U.toast('기본 서식을 저장했어요.'); App.go('/admin/questions', true); return;
+        }
+        if (!(d.title || '').trim()) return U.toast('제목(설교 제목)을 입력해 주세요.', 'error');
+        if (!d.week_of) return U.toast('주일 날짜를 입력해 주세요.', 'error');
+        var publish_at = rel.mode === 'week' ? null : rel.mode === 'sunday' ? sundayAt(d.week_of, rel.time) : U.fromLocalInput(rel.custom);
+        if (rel.mode === 'custom' && !publish_at) return U.toast('공개 시각을 입력해 주세요.', 'error');
+        var saved = await App.api.questions.save({
+          id: d.id, week_of: d.week_of, title: d.title.trim(), sermon_title: d.title.trim(), preacher: d.preacher, scripture: d.scripture, scripture_text: d.scripture_text,
+          body: d.body, questions: qsClean, application: d.application, prayer: d.prayer, image_url: d.image_url || '', attachment_url: d.attachment_url || '', attachment_name: d.attachment_name || '',
+          publish_at: publish_at, published: !!d.published, allow_anonymous: !!d.allow_anonymous, closed: !!d.closed
+        });
+        var at = U.releaseAt(saved);
+        U.toast(saved.published && at && at.getTime() > Date.now() ? '저장했어요. ' + U.fmtWhen(at) + '에 자동 공개돼요.' : '저장했어요.');
+        App.go('/admin/questions/' + saved.id, true);
+      });
+      U.$$('[data-adel]', ctx.el).forEach(function (b) {
+        b.onclick = guard(async function () {
+          if (!(await U.confirm('이 나눔을 삭제할까요?', '삭제', true))) return;
+          await App.api.answers.remove(+b.dataset.adel); U.toast('삭제했어요.'); App.render();
+        });
+      });
+      U.$$('.a-img', ctx.el).forEach(function (im) { im.onclick = function () { U.lightbox([im.src], 0); }; });
+      var csv = ctx.el.querySelector('[data-csv]');
+      if (csv) csv.onclick = function () {
+        U.downloadCSV('나눔_' + d.week_of + '.csv', ['작성일시', '질문', '표시이름', '실명', '익명', '공감', '내용'],
+          answers.map(function (a) { return [U.fmtDate(a.created_at, true), a.question_no ? 'Q' + a.question_no + '. ' + ((d.questions || [])[a.question_no - 1] || '') : '전체', a.is_anonymous ? '익명' : a.author_name, a.real_name || a.author_name, a.is_anonymous ? 'Y' : '', a.like_count || 0, a.body]; }));
+      };
+    }
+    async function saveTemplate(v) {
+      var merged = Object.assign({}, tplOf(), v);
+      await App.api.content.set('sheet_template', merged);
+      App.content = await App.api.content.getAll();
+    }
+    draw();
   }
 
-  App.route('/admin/questions/new', async function (ctx) { await questionEditor(ctx, null); }, Object.assign({ title: '새 질문' }, A));
+  App.route('/admin/questions/new', async function (ctx) { await sheetEditor(ctx, null, 'new'); }, Object.assign({ title: '새 나눔지' }, A));
+  App.route('/admin/sheet-template', async function (ctx) { await sheetEditor(ctx, null, 'template'); }, Object.assign({ title: '나눔지 기본 서식' }, A));
   App.route('/admin/questions/:id', async function (ctx) {
     var q = await App.api.questions.get(ctx.params.id); if (!ctx.alive()) return;
-    await questionEditor(ctx, q);
-  }, Object.assign({ title: '질문 수정' }, A));
+    await sheetEditor(ctx, q, 'edit');
+  }, Object.assign({ title: '나눔지 수정' }, A));
 
   /* 이미지 입력 필드 (미리보기 + 업로드 + URL 직접 입력) */
   function imageField(el, url, onChange, folder) {
@@ -337,7 +461,7 @@
   App.route('/admin/members', async function (ctx) {
     var list = await App.api.profiles.list();
     if (!ctx.alive()) return;
-    var q = '', st = ctx.query.status || 'all';
+    var q = '', st = ctx.query.status || 'all', teamOnly = ctx.query.team === 'worship';
     var meId = App.profile().id;
     var ST = [['active', '정상'], ['pending', '승인 대기'], ['blocked', '이용 제한'], ['withdrawn', '탈퇴']];
     ctx.el.innerHTML = toolbar(
@@ -347,19 +471,29 @@
     function draw() {
       var shown = list.filter(function (m) {
         var hay = (m.name + ' ' + m.email + ' ' + (m.phone || '')).toLowerCase();
-        return (st === 'all' ? m.status !== 'withdrawn' : m.status === st) && (!q || hay.indexOf(q) >= 0);
+        return (st === 'all' ? m.status !== 'withdrawn' : m.status === st) && (!q || hay.indexOf(q) >= 0) && (!teamOnly || (m.teams || []).indexOf('worship') >= 0);
       });
       ctx.el.querySelector('#mchips').innerHTML = [['all', '전체']].concat(ST).map(function (x) {
         var n = list.filter(function (m) { return x[0] === 'all' ? m.status !== 'withdrawn' : m.status === x[0]; }).length;
         return '<button class="chip-btn' + (st === x[0] ? ' on' : '') + '" data-st="' + x[0] + '">' + x[1] + ' <small>' + n + '</small></button>';
-      }).join('');
-      ctx.el.querySelector('#mtable').innerHTML = panel('회원 ' + shown.length + '명', table(['이름', '이메일', '연락처', '가입일', '상태', '권한', ''], shown.map(function (m) {
+      }).join('') + '<button class="chip-btn' + (teamOnly ? ' on' : '') + '" data-teamonly>' + icon('music', 'inline-ic') + '찬양팀 <small>' + list.filter(function (m) { return (m.teams || []).indexOf('worship') >= 0; }).length + '</small></button>';
+      ctx.el.querySelector('#mtable').innerHTML = panel('회원 ' + shown.length + '명', table(['이름', '이메일', '연락처', '가입일', '상태', '권한', '찬양팀', ''], shown.map(function (m) {
         return { cells: ['<b class="nw">' + esc(m.name) + '</b>' + (m.id === meId ? ' <span class="chip">나</span>' : ''), esc(m.email || ''), '<span class="nw">' + esc(m.phone || '-') + '</span>', '<span class="nw">' + U.fmtDate(m.created_at) + '</span>',
           '<select data-mst="' + m.id + '"' + (m.id === meId ? ' disabled' : '') + '>' + ST.map(function (s) { return '<option value="' + s[0] + '"' + (m.status === s[0] ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('') + '</select>',
           '<select data-mrole="' + m.id + '"' + (m.id === meId ? ' disabled' : '') + '><option value="member"' + (m.role === 'member' ? ' selected' : '') + '>성도</option><option value="admin"' + (m.role === 'admin' ? ' selected' : '') + '>관리자</option></select>',
+          '<label class="switch sm"><input type="checkbox" data-team="' + m.id + '"' + ((m.teams || []).indexOf('worship') >= 0 ? ' checked' : '') + '><i></i></label>',
           (m.status === 'pending' ? '<button class="btn btn-sm btn-primary" data-approve="' + m.id + '">승인</button> ' : '') + (m.id === meId ? '' : '<button class="icon-btn danger-text" data-mdel="' + m.id + '" aria-label="삭제">' + icon('trash') + '</button>')] };
       }), { empty: '해당하는 회원이 없어요.' }));
       U.$$('[data-st]', ctx.el).forEach(function (b) { b.onclick = function () { st = b.dataset.st; draw(); }; });
+      var to = ctx.el.querySelector('[data-teamonly]'); if (to) to.onclick = function () { teamOnly = !teamOnly; draw(); };
+      U.$$('[data-team]', ctx.el).forEach(function (c) {
+        c.onchange = guard(async function () {
+          var m = list.filter(function (x) { return x.id === c.dataset.team; })[0];
+          var teams = (m.teams || []).filter(function (t) { return t !== 'worship'; });
+          if (c.checked) teams.push('worship');
+          await upd(m.id, { teams: teams });
+        });
+      });
       U.$$('[data-mst]', ctx.el).forEach(function (s) { s.onchange = guard(async function () { await upd(s.dataset.mst, { status: s.value }); }); });
       U.$$('[data-approve]', ctx.el).forEach(function (b) { b.onclick = guard(async function () { await upd(b.dataset.approve, { status: 'active' }); draw(); }); });
       U.$$('[data-mrole]', ctx.el).forEach(function (s) {
@@ -382,8 +516,8 @@
     }
     ctx.el.querySelector('#msearch').oninput = U.debounce(function (e) { q = e.target.value.trim().toLowerCase(); draw(); }, 150);
     ctx.el.querySelector('[data-csv]').onclick = function () {
-      U.downloadCSV('회원명단_' + U.ymd(new Date()) + '.csv', ['이름', '이메일', '연락처', '가입일', '상태', '권한'],
-        list.map(function (m) { return [m.name, m.email, m.phone || '', U.fmtDate(m.created_at), { active: '정상', pending: '승인 대기', blocked: '이용 제한', withdrawn: '탈퇴' }[m.status], m.role === 'admin' ? '관리자' : '성도']; }));
+      U.downloadCSV('회원명단_' + U.ymd(new Date()) + '.csv', ['이름', '이메일', '연락처', '가입일', '상태', '권한', '찬양팀'],
+        list.map(function (m) { return [m.name, m.email, m.phone || '', U.fmtDate(m.created_at), { active: '정상', pending: '승인 대기', blocked: '이용 제한', withdrawn: '탈퇴' }[m.status], m.role === 'admin' ? '관리자' : '성도', (m.teams || []).indexOf('worship') >= 0 ? 'Y' : '']; }));
     };
     draw();
   }, Object.assign({ title: '회원 관리' }, A));
@@ -563,7 +697,7 @@
       document.body.appendChild(a); a.click(); a.remove();
     });
     ctx.el.querySelector('[data-copy-notice]').onclick = function () {
-      Install.copy('[인투처치 앱 안내]\n이번 주 질문 나눔, 교회 소식, 예배 안내를 앱으로 만나 보세요 🙂\n\n👉 ' + iu + '\n\n· 아이폰: Safari로 열고 공유 → 홈 화면에 추가\n· 안드로이드: Chrome으로 열고 "앱 설치"\n(카카오톡에서 열리면 오른쪽 위 메뉴에서 다른 브라우저로 열어 주세요)', '안내문을 복사했어요. 단톡방에 붙여 넣어 주세요.');
+      Install.copy('[인투처치 앱 안내]\n매주 나눔지와 나눔, 교회 소식, 예배 안내를 앱으로 만나 보세요 🙂\n\n👉 ' + iu + '\n\n· 아이폰: Safari로 열고 공유 → 홈 화면에 추가\n· 안드로이드: Chrome으로 열고 "앱 설치"\n(카카오톡에서 열리면 오른쪽 위 메뉴에서 다른 브라우저로 열어 주세요)', '안내문을 복사했어요. 단톡방에 붙여 넣어 주세요.');
     };
     var rs = ctx.el.querySelector('[data-reset]');
     if (rs) rs.onclick = async function () { if (!(await U.confirm('데모 데이터를 처음 상태로 되돌릴까요?', '초기화', true))) return; App.api.resetDemo(); location.hash = '#/'; location.reload(); };

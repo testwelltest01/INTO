@@ -66,6 +66,23 @@
     return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 주일';
   };
 
+  // 나눔지 공개 시각: publish_at 이 있으면 그 시각, 없으면 해당 주 월요일 0시
+  U.releaseAt = function (q) {
+    if (!q) return null;
+    if (q.publish_at) return new Date(q.publish_at);
+    var d = U.toDate(q.week_of); if (!d) return null;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6);
+  };
+  U.isReleased = function (q) { var r = U.releaseAt(q); return !!(q && q.published && r && r.getTime() <= Date.now()); };
+  U.fmtWhen = function (v) {
+    var d = U.toDate(v); if (!d) return '';
+    var days = ['일', '월', '화', '수', '목', '금', '토'];
+    return (d.getMonth() + 1) + '/' + d.getDate() + '(' + days[d.getDay()] + ') ' + U.pad(d.getHours()) + ':' + U.pad(d.getMinutes());
+  };
+  // <input type="datetime-local"> 값 ↔ ISO
+  U.toLocalInput = function (v) { var d = U.toDate(v); if (!d) return ''; return U.ymd(d) + 'T' + U.pad(d.getHours()) + ':' + U.pad(d.getMinutes()); };
+  U.fromLocalInput = function (s) { if (!s) return null; var d = new Date(s); return isNaN(d) ? null : d.toISOString(); };
+
   U.uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
 
   U.debounce = function (fn, ms) {
@@ -256,6 +273,7 @@
     'eye-off': '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.2 6.2A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 4.8-1.3"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     send: '<path d="M21 3 10 14M21 3l-7 18-4-7-7-4 18-7z"/>',
     camera: '<path d="M4 7h3l2-3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="4"/>',
+    music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
     book: '<path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2V5z"/><path d="M4 19a2 2 0 0 1 2-2h14"/>'
   };
   U.icon = function (name, cls) {
