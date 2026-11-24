@@ -1,0 +1,433 @@
+-- =====================================================================
+--  INTO CHURCH PWA — Supabase schema
+--  Supabase 대시보드 > SQL Editor 에 이 파일 전체를 붙여넣고 Run 하세요.
+--  (여러 번 실행해도 안전하도록 if not exists / or replace 를 사용했습니다)
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 0. 공통: updated_at 자동 갱신
+-- ---------------------------------------------------------------------
+create or replace function public.touch_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 1. 회원 프로필 (auth.users 와 1:1)
+-- ---------------------------------------------------------------------
+create table if not exists public.profiles (
+  id          uuid primary key references auth.users (id) on delete cascade,
+  email       text,
+  name        text not null default '',
+  phone       text,
+  role        text not null default 'member' check (role in ('member', 'admin')),
+  status      text not null default 'active' check (status in ('active', 'pending', 'blocked', 'withdrawn')),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+-- 관리자/회원 판별 함수 (RLS 안에서 재귀 없이 쓰기 위해 security definer)
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin' and status = 'active'
+  );
+$$;
+
+create or replace function public.is_member()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and status = 'active'
+  );
+$$;
+
+-- ---------------------------------------------------------------------
+-- 2. 사이트 콘텐츠 (홈/소개/예배안내 등 문구, 링크, 설정) — key / jsonb
+-- ---------------------------------------------------------------------
+create table if not exists public.site_content (
+  key         text primary key,
+  value       jsonb not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now()
+);
+
+-- 가입 시 프로필 자동 생성 (설정에서 '가입 승인제'가 켜져 있으면 pending)
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  need_approval boolean;
+begin
+  select coalesce((value ->> 'require_approval')::boolean, false)
+    into need_approval
+    from public.site_content where key = 'settings';
+
+  insert into public.profiles (id, email, name, phone, status)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'name', split_part(new.email, '@', 1)),
+    new.raw_user_meta_data ->> 'phone',
+    case when coalesce(need_approval, false) then 'pending' else 'active' end
+  )
+  on conflict (id) do nothing;
+  return new;
+end $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- 일반 회원은 자기 role/status 를 바꿀 수 없음 (탈퇴 처리만 허용)
+--  * security invoker 로 두어 current_user 가 실제 호출 역할(authenticated/anon)을 가리키게 함
+--  * SQL Editor(postgres)·service_role 에서의 수정은 그대로 통과 → 첫 관리자 지정 가능
+create or replace function public.is_app_user()
+returns boolean language sql stable as $$
+  select current_user in ('authenticated', 'anon');
+$$;
+
+create or replace function public.profile_name(uid uuid)
+returns text language sql stable security definer set search_path = public as $$
+  select coalesce((select name from public.profiles where id = uid), '');
+$$;
+
+create or replace function public.guard_profile_update()
+returns trigger language plpgsql security invoker set search_path = public as $$
+begin
+  if public.is_app_user() and not public.is_admin() then
+    new.role := old.role;
+    if new.status is distinct from old.status and new.status <> 'withdrawn' then
+      new.status := old.status;
+    end if;
+    new.email := old.email;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists profiles_guard on public.profiles;
+create trigger profiles_guard before update on public.profiles
+  for each row execute function public.guard_profile_update();
+
+drop trigger if exists profiles_touch on public.profiles;
+create trigger profiles_touch before update on public.profiles
+  for each row execute function public.touch_updated_at();
+
+drop trigger if exists site_content_touch on public.site_content;
+create trigger site_content_touch before update on public.site_content
+  for each row execute function public.touch_updated_at();
+
+-- ---------------------------------------------------------------------
+-- 3. 교회 소식 (공지)
+-- ---------------------------------------------------------------------
+create table if not exists public.notices (
+  id          bigint generated by default as identity primary key,
+  title       text not null,
+  body        text not null default '',
+  image_url   text,
+  link_url    text,
+  pinned      boolean not null default false,
+  published   boolean not null default true,
+  author_id   uuid references public.profiles (id) on delete set null,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+drop trigger if exists notices_touch on public.notices;
+create trigger notices_touch before update on public.notices
+  for each row execute function public.touch_updated_at();
+
+-- ---------------------------------------------------------------------
+-- 4. 이번 주 질문 (관리자가 매주 올리는 질문) + 회원 나눔(답변) + 공감
+-- ---------------------------------------------------------------------
+create table if not exists public.weekly_questions (
+  id               bigint generated by default as identity primary key,
+  week_of          date not null,                 -- 해당 주일(일요일) 날짜
+  title            text not null,                 -- 질문
+  body             text not null default '',      -- 설명/묵상 안내
+  scripture        text,                          -- 본문 말씀
+  image_url        text,
+  published        boolean not null default true,
+  allow_anonymous  boolean not null default true,
+  closed           boolean not null default false, -- 나눔 마감
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+create index if not exists weekly_questions_week_idx on public.weekly_questions (week_of desc);
+drop trigger if exists weekly_questions_touch on public.weekly_questions;
+create trigger weekly_questions_touch before update on public.weekly_questions
+  for each row execute function public.touch_updated_at();
+
+create table if not exists public.answers (
+  id            bigint generated by default as identity primary key,
+  question_id   bigint not null references public.weekly_questions (id) on delete cascade,
+  user_id       uuid not null references public.profiles (id) on delete cascade,
+  author_name   text not null default '',
+  body          text not null,
+  image_url     text,
+  is_anonymous  boolean not null default false,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+create index if not exists answers_question_idx on public.answers (question_id, created_at);
+
+-- 작성자 이름을 저장 (익명이면 '익명') — 다른 회원은 profiles 를 읽을 수 없기 때문
+create or replace function public.set_answer_author()
+returns trigger language plpgsql security invoker set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.user_id := old.user_id;
+    new.question_id := old.question_id;
+  end if;
+  new.author_name := case when new.is_anonymous then '익명'
+                          else public.profile_name(new.user_id) end;
+  return new;
+end $$;
+drop trigger if exists answers_author on public.answers;
+create trigger answers_author before insert or update on public.answers
+  for each row execute function public.set_answer_author();
+drop trigger if exists answers_touch on public.answers;
+create trigger answers_touch before update on public.answers
+  for each row execute function public.touch_updated_at();
+
+create table if not exists public.answer_likes (
+  answer_id   bigint not null references public.answers (id) on delete cascade,
+  user_id     uuid not null references public.profiles (id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (answer_id, user_id)
+);
+
+-- ---------------------------------------------------------------------
+-- 5. 질문 게시판 (회원이 올리는 질문, 목사님/관리자가 답변)
+-- ---------------------------------------------------------------------
+create table if not exists public.qna (
+  id           bigint generated by default as identity primary key,
+  user_id      uuid not null references public.profiles (id) on delete cascade,
+  author_name  text not null default '',
+  title        text not null,
+  body         text not null,
+  image_url    text,
+  is_private   boolean not null default false,  -- 비공개: 본인+관리자만
+  reply        text,
+  replied_at   timestamptz,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create index if not exists qna_created_idx on public.qna (created_at desc);
+
+create or replace function public.guard_qna()
+returns trigger language plpgsql security invoker set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.user_id := old.user_id;
+    if public.is_app_user() and not public.is_admin() then
+      new.reply := old.reply;
+      new.replied_at := old.replied_at;
+    elsif new.reply is distinct from old.reply then
+      new.replied_at := case when coalesce(new.reply, '') = '' then null else now() end;
+    end if;
+  else
+    if public.is_app_user() and not public.is_admin() then
+      new.reply := null;
+      new.replied_at := null;
+    end if;
+  end if;
+  new.author_name := public.profile_name(new.user_id);
+  return new;
+end $$;
+drop trigger if exists qna_guard on public.qna;
+create trigger qna_guard before insert or update on public.qna
+  for each row execute function public.guard_qna();
+drop trigger if exists qna_touch on public.qna;
+create trigger qna_touch before update on public.qna
+  for each row execute function public.touch_updated_at();
+
+-- ---------------------------------------------------------------------
+-- 6. 예배 문의 / 새가족 신청 (로그인 없이 누구나 작성 → 관리자만 열람)
+-- ---------------------------------------------------------------------
+create table if not exists public.inquiries (
+  id              bigint generated by default as identity primary key,
+  name            text not null,
+  phone           text,
+  email           text,
+  kind            text not null default '예배 참석',
+  preferred_date  date,
+  message         text not null default '',
+  status          text not null default 'new' check (status in ('new', 'contacted', 'done')),
+  admin_memo      text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+drop trigger if exists inquiries_touch on public.inquiries;
+create trigger inquiries_touch before update on public.inquiries
+  for each row execute function public.touch_updated_at();
+
+-- ---------------------------------------------------------------------
+-- 7. 갤러리 사진
+-- ---------------------------------------------------------------------
+create table if not exists public.photos (
+  id          bigint generated by default as identity primary key,
+  url         text not null,
+  thumb_url   text,
+  caption     text,
+  tag         text,
+  sort        integer not null default 0,
+  uploader    uuid references public.profiles (id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+
+-- =====================================================================
+-- RLS (행 단위 보안)
+-- =====================================================================
+alter table public.profiles         enable row level security;
+alter table public.site_content     enable row level security;
+alter table public.notices          enable row level security;
+alter table public.weekly_questions enable row level security;
+alter table public.answers          enable row level security;
+alter table public.answer_likes     enable row level security;
+alter table public.qna              enable row level security;
+alter table public.inquiries        enable row level security;
+alter table public.photos           enable row level security;
+
+-- profiles
+drop policy if exists "profiles: read own or admin" on public.profiles;
+create policy "profiles: read own or admin" on public.profiles
+  for select using (id = auth.uid() or public.is_admin());
+drop policy if exists "profiles: update own or admin" on public.profiles;
+create policy "profiles: update own or admin" on public.profiles
+  for update using (id = auth.uid() or public.is_admin());
+drop policy if exists "profiles: admin delete" on public.profiles;
+create policy "profiles: admin delete" on public.profiles
+  for delete using (public.is_admin());
+
+-- site_content
+drop policy if exists "content: public read" on public.site_content;
+create policy "content: public read" on public.site_content
+  for select using (true);
+drop policy if exists "content: admin write" on public.site_content;
+create policy "content: admin write" on public.site_content
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- notices
+drop policy if exists "notices: read published" on public.notices;
+create policy "notices: read published" on public.notices
+  for select using (published or public.is_admin());
+drop policy if exists "notices: admin write" on public.notices;
+create policy "notices: admin write" on public.notices
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- weekly_questions
+drop policy if exists "wq: read published" on public.weekly_questions;
+create policy "wq: read published" on public.weekly_questions
+  for select using (published or public.is_admin());
+drop policy if exists "wq: admin write" on public.weekly_questions;
+create policy "wq: admin write" on public.weekly_questions
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- answers : 나눔은 로그인한 (승인된) 회원만 읽고 씀
+drop policy if exists "answers: members read" on public.answers;
+create policy "answers: members read" on public.answers
+  for select using (public.is_member());
+drop policy if exists "answers: members insert" on public.answers;
+create policy "answers: members insert" on public.answers
+  for insert with check (
+    public.is_member() and user_id = auth.uid()
+    and exists (select 1 from public.weekly_questions q
+                where q.id = question_id and q.published and not q.closed)
+  );
+drop policy if exists "answers: own or admin update" on public.answers;
+create policy "answers: own or admin update" on public.answers
+  for update using ((user_id = auth.uid() and public.is_member()) or public.is_admin());
+drop policy if exists "answers: own or admin delete" on public.answers;
+create policy "answers: own or admin delete" on public.answers
+  for delete using (user_id = auth.uid() or public.is_admin());
+
+-- answer_likes
+drop policy if exists "likes: members read" on public.answer_likes;
+create policy "likes: members read" on public.answer_likes
+  for select using (public.is_member());
+drop policy if exists "likes: own insert" on public.answer_likes;
+create policy "likes: own insert" on public.answer_likes
+  for insert with check (public.is_member() and user_id = auth.uid());
+drop policy if exists "likes: own delete" on public.answer_likes;
+create policy "likes: own delete" on public.answer_likes
+  for delete using (user_id = auth.uid() or public.is_admin());
+
+-- qna : 공개 글은 회원 모두, 비공개 글은 본인+관리자
+drop policy if exists "qna: read" on public.qna;
+create policy "qna: read" on public.qna
+  for select using (
+    public.is_admin() or user_id = auth.uid() or (not is_private and public.is_member())
+  );
+drop policy if exists "qna: members insert" on public.qna;
+create policy "qna: members insert" on public.qna
+  for insert with check (public.is_member() and user_id = auth.uid());
+drop policy if exists "qna: own or admin update" on public.qna;
+create policy "qna: own or admin update" on public.qna
+  for update using ((user_id = auth.uid() and public.is_member()) or public.is_admin());
+drop policy if exists "qna: own or admin delete" on public.qna;
+create policy "qna: own or admin delete" on public.qna
+  for delete using (user_id = auth.uid() or public.is_admin());
+
+-- inquiries : 누구나 작성, 관리자만 열람/수정
+drop policy if exists "inquiries: anyone insert" on public.inquiries;
+create policy "inquiries: anyone insert" on public.inquiries
+  for insert with check (status = 'new' and admin_memo is null);
+drop policy if exists "inquiries: admin read" on public.inquiries;
+create policy "inquiries: admin read" on public.inquiries
+  for select using (public.is_admin());
+drop policy if exists "inquiries: admin update" on public.inquiries;
+create policy "inquiries: admin update" on public.inquiries
+  for update using (public.is_admin());
+drop policy if exists "inquiries: admin delete" on public.inquiries;
+create policy "inquiries: admin delete" on public.inquiries
+  for delete using (public.is_admin());
+
+-- photos
+drop policy if exists "photos: public read" on public.photos;
+create policy "photos: public read" on public.photos
+  for select using (true);
+drop policy if exists "photos: admin write" on public.photos;
+create policy "photos: admin write" on public.photos
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- =====================================================================
+-- Storage: 'media' 버킷 (공개 읽기)
+--   - admin/...            : 관리자 업로드 (소식, 갤러리, 질문 이미지)
+--   - members/<uid>/...    : 회원 업로드 (나눔/질문 첨부 사진)
+-- =====================================================================
+insert into storage.buckets (id, name, public)
+values ('media', 'media', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "media: public read" on storage.objects;
+create policy "media: public read" on storage.objects
+  for select using (bucket_id = 'media');
+
+drop policy if exists "media: admin all" on storage.objects;
+create policy "media: admin all" on storage.objects
+  for all using (bucket_id = 'media' and public.is_admin())
+  with check (bucket_id = 'media' and public.is_admin());
+
+drop policy if exists "media: member upload own folder" on storage.objects;
+create policy "media: member upload own folder" on storage.objects
+  for insert with check (
+    bucket_id = 'media'
+    and public.is_member()
+    and (storage.foldername(name))[1] = 'members'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+drop policy if exists "media: member delete own" on storage.objects;
+create policy "media: member delete own" on storage.objects
+  for delete using (
+    bucket_id = 'media'
+    and (storage.foldername(name))[1] = 'members'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+-- =====================================================================
+-- 첫 관리자 지정 (앱에서 회원가입한 뒤 아래 한 줄을 이메일만 바꿔 실행)
+--   update public.profiles set role = 'admin', status = 'active' where email = 'admin@into.or.kr';
+-- =====================================================================

@@ -1,0 +1,24 @@
+{
+  "name": "INTO CHURCH 인투처치",
+  "short_name": "INTO CHURCH",
+  "description": "더 깊이, 더 가까이, 더 낮게 — 판교 인투처치",
+  "lang": "ko",
+  "id": "./",
+  "start_url": "./#/",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#DBD7CE",
+  "theme_color": "#423B36",
+  "categories": ["lifestyle", "social"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "이번 주 질문", "url": "./#/q", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "교회 소식", "url": "./#/news", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "예배 안내", "url": "./#/worship", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
