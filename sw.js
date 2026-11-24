@@ -4,13 +4,13 @@
  *  - Supabase API 요청은 캐시하지 않음 (항상 최신 데이터)
  *  파일을 수정해 배포할 때는 VERSION 과 V(그리고 index.html 의 ?v= 숫자)를 함께 올려 주세요.
  */
-var VERSION = 'into-v9';
-var V = '?v=9'; // index.html 의 ?v= 값과 같게 맞춰 주세요
+var VERSION = 'into-v10';
+var V = '?v=10'; // index.html 의 ?v= 값과 같게 맞춰 주세요
 var SHELL = [
   './', './index.html', './config.js' + V, './css/app.css' + V,
   './js/util.js' + V, './js/seed.js' + V, './js/api-demo.js' + V, './js/api-supabase.js' + V,
-  './js/app.js' + V, './js/views-public.js' + V, './js/views-member.js' + V, './js/views-admin.js' + V, './js/install.js' + V, './js/scores.js' + V,
-  './manifest.webmanifest?v=9', './assets/icons/icon-512.png', './assets/vendor/qrcode.js', './assets/logo-dark.png', './assets/logo-light.png',
+  './js/app.js' + V, './js/views-public.js' + V, './js/views-member.js' + V, './js/views-admin.js' + V, './js/install.js' + V, './js/scores.js' + V, './js/mix.js' + V,
+  './manifest.webmanifest?v=10', './assets/icons/icon-512.png', './assets/vendor/qrcode.js', './assets/logo-dark.png', './assets/logo-light.png',
   './assets/icons/icon-192.png', './assets/icons/favicon-32.png', './assets/photos/home-hero.jpg'
 ];
 

@@ -323,6 +323,59 @@ window.createSupabaseApi = function (DEFAULTS, cfg) {
       remove: async function (id) { ok(await sb.from('setlists').delete().eq('id', id)); }
     },
 
+    // 나눔 조 나누기 (Supabase Realtime + 혹시 몰라 주기적으로 다시 읽기)
+    mix: {
+      listOpen: async function () {
+        if (!isMember()) return [];
+        var since = new Date(Date.now() - 12 * 3600 * 1000).toISOString();
+        return ok(await sb.from('mix_rooms').select('*').neq('status', 'closed').gte('created_at', since).order('created_at', { ascending: false }));
+      },
+      open: async function (o) {
+        needMember(); var uid = state.user.id;
+        for (var i = 0; i < 6; i++) {
+          var code = String(1000 + Math.floor(Math.random() * 9000));
+          var r = await sb.from('mix_rooms').insert({ code: code, title: o.title || '나눔 조 나누기', host_id: uid, group_count: o.group_count || 3 }).select().single();
+          if (!r.error) return r.data;
+          if (r.error.code !== '23505') throw r.error;
+        }
+        throw new Error('참가 코드를 만들지 못했어요. 다시 시도해 주세요.');
+      },
+      byCode: async function (code) {
+        if (!isMember()) return { code: String(code), guest_only: true };
+        return ok(await sb.from('mix_rooms').select('*').eq('code', String(code)).neq('status', 'closed').order('created_at', { ascending: false }).limit(1).maybeSingle());
+      },
+      get: async function (id) { var r = ok(await sb.from('mix_rooms').select('*').eq('id', id).maybeSingle()); if (!r) throw new Error('방을 찾을 수 없어요.'); return r; },
+      members: async function (id) { return ok(await sb.from('mix_members').select('id, room_id, user_id, name, is_leader, added_by_host, created_at').eq('room_id', id).order('created_at').order('id')); },
+      join: async function (id) {
+        needMember(); var p = state.profile, r = await sb.from('mix_members').insert({ room_id: id, user_id: p.id, name: p.name || '이름 없음' }).select('id, room_id, user_id, name, is_leader, added_by_host, created_at').single();
+        if (!r.error) return r.data;
+        if (r.error.code === '23505') return ok(await sb.from('mix_members').select('id, room_id, user_id, name, is_leader, added_by_host, created_at').eq('room_id', id).eq('user_id', p.id).single());
+        throw r.error;
+      },
+      leave: async function (id) { var p = state.profile; if (!p) return; ok(await sb.from('mix_members').delete().eq('room_id', id).eq('user_id', p.id)); },
+      addName: async function (id, name) {
+        name = String(name || '').trim(); if (!name) throw new Error('이름을 적어 주세요.');
+        return ok(await sb.from('mix_members').insert({ room_id: id, name: name.slice(0, 20), added_by_host: true }).select('id').single());
+      },
+      setLeader: async function (memberId, v) { ok(await sb.from('mix_members').update({ is_leader: !!v }).eq('id', memberId)); },
+      remove: async function (memberId) { ok(await sb.from('mix_members').delete().eq('id', memberId)); },
+      update: async function (id, patch) { return ok(await sb.from('mix_rooms').update(patch).eq('id', id).select().single()); },
+      guestJoin: async function (code, name) { return ok(await sb.rpc('mix_guest_join', { p_code: String(code), p_name: name })); },
+      guestState: async function (memberId, token) { return ok(await sb.rpc('mix_guest_state', { p_member_id: memberId, p_token: token })); },
+      guestLeave: async function (memberId, token) { ok(await sb.rpc('mix_guest_leave', { p_member_id: memberId, p_token: token })); },
+      subscribe: function (id, cb) {
+        var ch = null, t = setInterval(cb, 5000);
+        try {
+          ch = sb.channel('mix-' + id + '-' + Math.random().toString(36).slice(2, 7))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'mix_rooms', filter: 'id=eq.' + id }, cb)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'mix_members', filter: 'room_id=eq.' + id }, cb)
+            .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'mix_members' }, cb)
+            .subscribe();
+        } catch (e) { }
+        return function () { clearInterval(t); if (ch) try { sb.removeChannel(ch); } catch (e) { } };
+      }
+    },
+
     stats: async function () {
       function cnt(q) { return q.then(function (r) { if (r.error) throw r.error; return r.count || 0; }); }
       var wk = new Date(Date.now() - 7 * 864e5).toISOString();

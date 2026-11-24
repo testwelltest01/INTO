@@ -103,6 +103,15 @@
     var ib = ctx.el.querySelector('[data-install]'); if (ib) ib.onclick = App.install;
     var hq = ctx.el.querySelector('[data-home-qr]');
     if (hq) Install.qrSVG(Install.installURL()).then(function (svg) { hq.innerHTML = svg; }).catch(function () { });
+    // 지금 열려 있는 나눔 조 나누기가 있으면 맨 위에 알림
+    if (App.isMember() && App.api.mix) App.api.mix.listOpen().then(function (rs) {
+      rs = rs.filter(function (r) { return r.status !== 'closed'; });
+      var box = ctx.alive() && ctx.el.querySelector('.home-cards'); if (!rs.length || !box) return;
+      var r = rs[0], a = document.createElement('a');
+      a.className = 'mix-banner'; a.href = '#/mix/' + r.code + '?j=1';
+      a.innerHTML = '<span class="mix-banner-i">' + icon('users') + '</span><span class="mix-banner-t"><b>' + esc(r.title) + ' 조 나누기</b><small>' + (r.status === 'done' ? '조가 나뉘었어요 · 내 조 확인하기' : '지금 참가 받는 중 · 코드 ' + r.code) + '</small></span>' + icon('chevron-right');
+      box.insertBefore(a, box.firstChild);
+    }).catch(function () { });
   }, { title: '' });
 
   function noticeRow(n) {

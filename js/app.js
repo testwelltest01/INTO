@@ -89,7 +89,7 @@
     ['/', '홈'], ['/about', '우리는 인투처치입니다'], ['/worship', '주일 예배 안내'],
     ['/community', '예배와 공동체'], ['/foundation', 'FOUNDATION']
   ];
-  var APP_NAV = [['/news', '교회 소식'], ['/q', '이번 주 나눔'], ['/q/board', '질문 게시판'], ['/gallery', '갤러리'], ['/contact', '예배 문의']];
+  var APP_NAV = [['/news', '교회 소식'], ['/q', '이번 주 나눔'], ['/q/board', '질문 게시판'], ['/mix', '나눔 조 나누기'], ['/gallery', '갤러리'], ['/contact', '예배 문의']];
 
   App.brandHTML = function () {
     return '<a href="#/" class="brand" aria-label="INTO CHURCH 홈">' +
@@ -111,7 +111,7 @@
             '<nav class="topnav" aria-label="주 메뉴">' +
               PUBLIC_NAV.map(function (n) { return '<a href="#' + n[0] + '" data-nav="' + n[0] + '">' + n[1] + '</a>'; }).join('') +
               '<span class="topnav-sep"></span>' +
-              APP_NAV.filter(function (n) { return n[0] !== '/q/board' && n[0] !== '/contact'; }).map(function (n) { return '<a href="#' + n[0] + '" data-nav="' + n[0] + '">' + n[1] + '</a>'; }).join('') +
+              APP_NAV.filter(function (n) { return n[0] !== '/q/board' && n[0] !== '/contact' && n[0] !== '/mix'; }).map(function (n) { return '<a href="#' + n[0] + '" data-nav="' + n[0] + '">' + n[1] + '</a>'; }).join('') +
             '</nav>' +
             '<div class="top-actions" id="top-actions"></div>' +
           '</div>' +
@@ -190,6 +190,7 @@
       var on = n === '/' || n === '/admin' ? path === n : (path === n || path.indexOf(n + '/') === 0);
       if (n === '/admin/scores' && path.indexOf('/admin/setlists') === 0) on = true;
       if (n === '/q' && path.indexOf('/q/board') === 0 && a.closest('.topnav')) on = false;
+      if (n === '/q' && path.indexOf('/mix') === 0 && a.closest('.tabbar')) on = true;
       if (n === '/me' && (path === '/login' || path === '/signup')) on = true;
       a.classList.toggle('active', on);
     });

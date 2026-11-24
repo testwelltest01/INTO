@@ -416,6 +416,95 @@ window.createDemoApi = function (DEFAULTS) {
       remove: async function (id) { needAdmin(); var d = load(); d.setlists = (d.setlists || []).filter(function (x) { return String(x.id) !== String(id); }); persist(); }
     },
 
+    // 나눔 조 나누기 (데모: 이 브라우저의 다른 탭끼리 실시간으로 맞춰짐)
+    mix: (function () {
+      var MK = 'into_demo_mix_v1';
+      function rd() { try { return JSON.parse(localStorage.getItem(MK) || 'null') || { rooms: [], members: [], tokens: {}, seq: 1 }; } catch (e) { return { rooms: [], members: [], tokens: {}, seq: 1 }; } }
+      function wr(m) { localStorage.setItem(MK, JSON.stringify(m)); try { new BroadcastChannel('into-mix').postMessage(Date.now()); } catch (e) { } }
+      function room(m, id) { return m.rooms.filter(function (r) { return r.id === id; })[0]; }
+      function canHost(r) { var p = me(); return !!(p && (r.host_id === p.id || p.role === 'admin')); }
+      function needRoomHost(m, id) { var r = room(m, id); if (!r) throw new Error('방을 찾을 수 없어요.'); if (!canHost(r)) throw new Error('방을 연 사람만 할 수 있어요.'); return r; }
+      var M = {
+        listOpen: async function () {
+          if (!isMember()) return [];
+          var since = Date.now() - 12 * 3600 * 1000;
+          return clone(rd().rooms.filter(function (r) { return r.status !== 'closed' && new Date(r.created_at).getTime() > since; }).sort(byDesc('created_at')));
+        },
+        open: async function (o) {
+          needMember(); var m = rd(), code;
+          var used = m.rooms.filter(function (r) { return r.status !== 'closed'; }).map(function (r) { return r.code; });
+          do { code = String(1000 + Math.floor(Math.random() * 9000)); } while (used.indexOf(code) >= 0);
+          var r = { id: 'mix-' + U.uid(), code: code, title: o.title || '나눔 조 나누기', host_id: me().id, status: 'open', group_count: o.group_count || 3, groups: [], round: 0, created_at: now(), updated_at: now() };
+          m.rooms.push(r); wr(m); return clone(r);
+        },
+        byCode: async function (code) {
+          var r = rd().rooms.filter(function (x) { return x.code === String(code) && x.status !== 'closed'; }).sort(byDesc('created_at'))[0];
+          if (!r) return null; if (!isMember()) return { id: r.id, code: r.code, title: r.title, status: r.status, guest_only: true };
+          return clone(r);
+        },
+        get: async function (id) { var r = room(rd(), id); if (!r || !isMember()) throw new Error('방을 찾을 수 없어요.'); return clone(r); },
+        members: async function (id) { if (!isMember()) return []; return clone(rd().members.filter(function (x) { return x.room_id === id; })); },
+        join: async function (id) {
+          needMember(); var m = rd(), r = room(m, id), p = me();
+          if (!r || r.status === 'closed') throw new Error('이미 끝난 조 나누기예요.');
+          var ex = m.members.filter(function (x) { return x.room_id === id && x.user_id === p.id; })[0];
+          if (ex) return clone(ex);
+          var x = { id: m.seq++, room_id: id, user_id: p.id, name: p.name, is_leader: false, added_by_host: false, created_at: now() };
+          m.members.push(x); wr(m); return clone(x);
+        },
+        leave: async function (id) { var m = rd(), p = me(); m.members = m.members.filter(function (x) { return !(x.room_id === id && p && x.user_id === p.id); }); wr(m); },
+        addName: async function (id, name) {
+          var m = rd(); needRoomHost(m, id); name = String(name || '').trim();
+          if (!name) throw new Error('이름을 적어 주세요.');
+          var x = { id: m.seq++, room_id: id, user_id: null, name: name.slice(0, 20), is_leader: false, added_by_host: true, created_at: now() };
+          m.members.push(x); wr(m); return clone(x);
+        },
+        setLeader: async function (memberId, v) {
+          var m = rd(), x = m.members.filter(function (y) { return y.id === memberId; })[0]; if (!x) return;
+          needRoomHost(m, x.room_id); x.is_leader = !!v; wr(m);
+        },
+        remove: async function (memberId) {
+          var m = rd(), x = m.members.filter(function (y) { return y.id === memberId; })[0]; if (!x) return;
+          needRoomHost(m, x.room_id); m.members = m.members.filter(function (y) { return y !== x; }); wr(m);
+        },
+        update: async function (id, patch) { var m = rd(), r = needRoomHost(m, id); Object.assign(r, patch, { updated_at: now() }); wr(m); return clone(r); },
+        guestJoin: async function (code, name) {
+          var m = rd(); name = String(name || '').trim();
+          if (!name || name.length > 20) throw new Error('이름을 1~20자로 적어 주세요.');
+          var r = m.rooms.filter(function (x) { return x.code === String(code).trim() && x.status !== 'closed'; }).sort(byDesc('created_at'))[0];
+          if (!r) throw new Error('참가 코드를 찾을 수 없어요. 숫자 4자리를 다시 확인해 주세요.');
+          var x = { id: m.seq++, room_id: r.id, user_id: null, name: name, is_leader: false, added_by_host: false, created_at: now() }, tok = U.uid();
+          m.members.push(x); m.tokens[x.id] = tok; wr(m);
+          return { room_id: r.id, code: r.code, member_id: x.id, token: tok };
+        },
+        guestState: async function (memberId, token) {
+          var m = rd(); if (m.tokens[memberId] !== token) return null;
+          var x = m.members.filter(function (y) { return y.id === memberId; })[0]; if (!x) return null;
+          var r = room(m, x.room_id); if (!r) return null;
+          return { room: clone(r), me: x.id, members: clone(m.members.filter(function (y) { return y.room_id === r.id; })) };
+        },
+        guestLeave: async function (memberId, token) { var m = rd(); if (m.tokens[memberId] !== token) return; m.members = m.members.filter(function (y) { return y.id !== memberId; }); delete m.tokens[memberId]; wr(m); },
+        // 데모 전용: 가상 참가자 넣기
+        demoFill: async function (id, n) {
+          var m = rd(); needRoomHost(m, id);
+          var names = ['김은혜', '박소망', '이믿음', '최기쁨', '정평강', '강온유', '조사랑', '윤충성', '장자비', '임화평', '한양선', '오절제', '서빛나', '신하늘', '권새롬', '황다윗', '안요셉', '송한나', '류에스더', '전다니엘'];
+          var have = m.members.filter(function (x) { return x.room_id === id; }).map(function (x) { return x.name; });
+          names.filter(function (nm) { return have.indexOf(nm) < 0; }).slice(0, n || 8).forEach(function (nm) {
+            m.members.push({ id: m.seq++, room_id: id, user_id: null, name: nm, is_leader: false, added_by_host: false, created_at: now() });
+          });
+          wr(m);
+        },
+        subscribe: function (id, cb) {
+          var bc = null, t = setInterval(cb, 2500);
+          function onStorage(e) { if (e.key === MK) cb(); }
+          window.addEventListener('storage', onStorage);
+          try { bc = new BroadcastChannel('into-mix'); bc.onmessage = cb; } catch (e) { }
+          return function () { clearInterval(t); window.removeEventListener('storage', onStorage); if (bc) bc.close(); };
+        }
+      };
+      return M;
+    })(),
+
     stats: async function () {
       needAdmin(); var d = load(), wk = Date.now() - 7 * 864e5;
       var cur = await api.questions.current();

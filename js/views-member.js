@@ -203,8 +203,9 @@
 
   /* ================= 나눔 (이번 주 나눔지 + 질문 게시판) ================= */
   function qTabs(active) {
-    return '<div class="seg-tabs container"><a href="#/q" class="' + (active === 'week' ? 'on' : '') + '">이번 주 나눔지</a><a href="#/q/board" class="' + (active === 'board' ? 'on' : '') + '">질문 게시판</a></div>';
+    return '<div class="seg-tabs container"><a href="#/q" class="' + (active === 'week' ? 'on' : '') + '">이번 주 나눔지</a><a href="#/q/board" class="' + (active === 'board' ? 'on' : '') + '">질문 게시판</a><a href="#/mix" class="' + (active === 'mix' ? 'on' : '') + '">조 나누기</a></div>';
   }
+  App.qTabs = qTabs;
 
   App.route('/q', async function (ctx) {
     var list = await App.api.questions.list();
