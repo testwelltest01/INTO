@@ -9,8 +9,8 @@
  *  (데이터가 이 브라우저에만 저장되며, 화면/기능을 미리 확인하는 용도)
  * ===================================================================== */
 window.INTO_CONFIG = {
-  SUPABASE_URL: '',
-  SUPABASE_ANON_KEY: '',
+  SUPABASE_URL: 'https://ioemcilzapkfuiplyiqq.supabase.co',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlvZW1jaWx6YXBrZnVpcGx5aXFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5OTA5OTIsImV4cCI6MjEwNzU2Njk5Mn0.zSn9Po_T-hyVy4dgb-eFH3-Io0pXIBXRa2MyXANSK5g',
 
   // Supabase JS SDK 주소 (보통 바꿀 필요 없음)
   SUPABASE_SDK: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
